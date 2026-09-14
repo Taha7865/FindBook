@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>FindBook.Tests.Unit</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <ProjectReference Include="../Domain/Domain.csproj" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+.git
+**/bin
+**/obj
+**/TestResults
+**/node_modules
+**/.next
+**/.env
+**/.env.*
+**/appsettings.Local.json
+**/secrets.json
