@@ -2,7 +2,7 @@
 
 A book search application built with .NET 8. Next.js will be added for the frontend.
 
-Current status: API setup with `GET /api/health`. Search, AI integration, and the frontend are not implemented yet.
+Current status: `GET /api/health` and `POST /api/books/search` work. Search calls Open Library directly. AI integration, final matching rules, and the frontend are not implemented yet.
 
 Search contracts are defined in `app/Api/Contracts`. Queries must contain non-whitespace text and be at most 1,000 characters. Results use `authors[]`; primary-author and contributor-role resolution is deferred with a TODO. Edition publication dates remain separate from the work's first publication year.
 
@@ -12,12 +12,12 @@ Search contracts are defined in `app/Api/Contracts`. Queries must contain non-wh
 
 ```text
 app/
-  Api/         Controllers, configuration, and future services and clients
+  Api/         Controllers, configuration, services, and external clients
   Domain/      Class library for book models and matching rules
   Tests.Unit/  Unit-test project
 ```
 
-Api references Domain. Domain has no external dependencies. Services will coordinate searches; separate clients will handle Gemini and Open Library calls. Public API contracts belong in Api. Domain has no implementation code yet.
+Api references Domain. Domain defines catalog models and the `IBookCatalog` interface without external dependencies. `BooksController` calls `BookSearchService`, which receives `IBookCatalog` through its constructor. `Program.cs` registers `OpenLibraryClient` as that implementation using .NET's HTTP client factory. The service is scoped to the request. Public API contracts and provider JSON models stay in Api.
 
 ## Run locally
 
@@ -29,6 +29,28 @@ dotnet run --project app/Api
 ```
 
 Open http://localhost:8080/api/health. The response is `{"status":"ok"}`.
+
+Search for a book:
+
+```sh
+curl -X POST http://localhost:8080/api/books/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"the hobbit"}'
+```
+
+The client requests 20 candidates and the service returns up to five distinct work IDs in Open Library's relevance order. Returned editions are grouped by work; the edition list is not exhaustive. Edition dates are currently `null` because they are not fetched in this search slice. Explanations describe the catalog result and are not AI-generated.
+
+| HTTP status | Meaning |
+| --- | --- |
+| 200 | Search completed; `matches` may be empty. |
+| 400 | Missing, malformed, blank, or overlong input. |
+| 404 | The requested route does not exist. |
+| 415 | The request body is not JSON. |
+| 502 | Open Library returned an unexpected response. |
+| 503 | Open Library is unavailable or rate-limited the request. |
+| 504 | Open Library did not respond within the timeout. |
+
+Open Library's base URL and 15-second timeout are in `app/Api/appsettings.json`. Environment variables `OpenLibrary__BaseUrl` and `OpenLibrary__TimeoutSeconds` can override them. No automatic retries are made. Client cancellation is passed through to the catalog request.
 
 For the user-local SDK installed during setup, first run:
 
@@ -55,13 +77,13 @@ The Dockerfile builds with the SDK and runs the compiled API in a smaller ASP.NE
 dotnet build --configuration Release --no-restore
 ```
 
-The initial build, release publish, and live health response were checked locally. Docker execution has not been verified on this machine.
+The build, release publish, and a live search for “the hobbit” were checked locally. Full HTTP checks with a local catalog fixture verified validation, grouped results, empty results, and error status/content types. Docker execution has not been verified on this machine.
 
-Run unit tests with `dotnet test --configuration Release`. They cover missing and blank queries, the length boundary, valid book text, and safe JSON encoding of instruction-like input. They do not measure a model's resistance to prompt injection. No CI workflow is configured.
+Run unit tests with `dotnet test --configuration Release`. They use controlled catalog responses to check validation, query encoding, missing metadata, work/edition grouping, the result limit, and error/cancellation handling. Safeguard tests check message encoding, not model resistance to prompt injection. No CI workflow is configured.
 
 ## Planned search behavior
 
-- Group editions of a book. Honor a specific publication year when a matching edition is available.
+- Fetch edition publication dates and honor a specific year when a matching edition is available.
 - Return a single clear title match, or up to five distinct books for broad or author-only queries.
 - Combine relevance with popularity. The popularity measure is not selected yet.
 - Use Gemini to interpret queries and explain matches using Open Library evidence.
