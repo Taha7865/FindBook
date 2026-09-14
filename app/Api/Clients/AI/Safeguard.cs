@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace FindBook.Api.Clients.AI;
 
-public static class AiPromptSafeguard
+public static class Safeguard
 {
     // A basic precaution, not a guarantee against prompt injection.
     // The AI client must send this as a system instruction and validate the response.

@@ -6,7 +6,7 @@ Current status: API setup with `GET /api/health`. Search, AI integration, and th
 
 Search contracts are defined in `app/Api/Contracts`. Queries must contain non-whitespace text and be at most 1,000 characters. Results use `authors[]`; primary-author and contributor-role resolution is deferred with a TODO. Edition publication dates remain separate from the work's first publication year.
 
-`AiPromptSafeguard` provides a short system instruction and a JSON-encoded user message for the future AI client. It preserves book text and labels it as untrusted data. This is a basic prompt precaution, not reliable injection detection. It is not connected to a model yet; structured response validation will be added with the client.
+`Safeguard` provides a short system instruction and a JSON-encoded user message for the future AI client. It preserves book text and labels it as untrusted data. This is a basic prompt precaution, not reliable injection detection. It is not connected to a model yet; structured response validation will be added with the client.
 
 ## Structure
 
