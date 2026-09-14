@@ -1,12 +1,12 @@
 using System.Net;
 using System.Text;
-using FindBook.Api.Clients.OpenLibrary;
+using FindBook.Domain.Clients.OpenLibrary;
 using FindBook.Domain.Exceptions;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace FindBook.Tests.Unit;
 
-public sealed class OpenLibraryClientTests
+public sealed class OpenLibraryApiClientTests
 {
     [Fact]
     public async Task Maps_catalog_fields_and_keeps_query_in_one_parameter()
@@ -25,7 +25,7 @@ public sealed class OpenLibraryClientTests
                 """));
         });
 
-        var books = await new OpenLibraryClient(http).SearchAsync(query, CancellationToken.None);
+        var books = await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(query, CancellationToken.None);
 
         var book = Assert.Single(books);
         Assert.Equal("OL1W", book.WorkId);
@@ -45,7 +45,7 @@ public sealed class OpenLibraryClientTests
             {"key":"OL1W","title":"Example","cover_i":-1}]}
             """)));
 
-        var book = Assert.Single(await new OpenLibraryClient(http).SearchAsync("example", default));
+        var book = Assert.Single(await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", default));
 
         Assert.Empty(book.Authors);
         Assert.Empty(book.Editions);
@@ -57,7 +57,7 @@ public sealed class OpenLibraryClientTests
     public async Task Empty_docs_is_a_successful_empty_search()
     {
         using var http = CreateHttp((_, _) => Task.FromResult(Json("{\"docs\":[]}")));
-        Assert.Empty(await new OpenLibraryClient(http).SearchAsync("unknown", default));
+        Assert.Empty(await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("unknown", default));
     }
 
     [Theory]
@@ -70,7 +70,7 @@ public sealed class OpenLibraryClientTests
     {
         using var http = CreateHttp((_, _) => Task.FromResult(Json(body)));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryClient(http).SearchAsync("example", default));
+            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", default));
         Assert.Equal(CatalogFailure.BadResponse, error.Failure);
     }
 
@@ -83,7 +83,7 @@ public sealed class OpenLibraryClientTests
     {
         using var http = CreateHttp((_, _) => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryClient(http).SearchAsync("example", default));
+            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", default));
         Assert.Equal(failure, error.Failure);
     }
 
@@ -92,7 +92,7 @@ public sealed class OpenLibraryClientTests
     {
         using var http = CreateHttp((_, _) => throw new HttpRequestException("Connection failed"));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryClient(http).SearchAsync("example", default));
+            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", default));
         Assert.Equal(CatalogFailure.Unavailable, error.Failure);
     }
 
@@ -101,7 +101,7 @@ public sealed class OpenLibraryClientTests
     {
         using var http = CreateHttp((_, _) => throw new TaskCanceledException("HTTP timeout"));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryClient(http).SearchAsync("example", default));
+            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", default));
         Assert.Equal(CatalogFailure.Timeout, error.Failure);
     }
 
@@ -112,7 +112,7 @@ public sealed class OpenLibraryClientTests
         source.Cancel();
         using var http = CreateHttp((_, token) => Task.FromCanceled<HttpResponseMessage>(token));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new OpenLibraryClient(http).SearchAsync("example", source.Token));
+            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", source.Token));
     }
 
     private static HttpClient CreateHttp(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send)
@@ -122,6 +122,15 @@ public sealed class OpenLibraryClientTests
     {
         Content = new StringContent(body, Encoding.UTF8, "application/json")
     };
+
+    private sealed class StubFactory(HttpClient client) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name)
+        {
+            Assert.Equal(OpenLibraryApiOptions.SectionName, name);
+            return client;
+        }
+    }
 
     private sealed class StubHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send)
         : HttpMessageHandler

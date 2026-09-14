@@ -1,13 +1,13 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using FindBook.Domain.Exceptions;
-using FindBook.Domain.Interfaces;
 using FindBook.Domain.Models;
 
-namespace FindBook.Api.Clients.OpenLibrary;
+namespace FindBook.Domain.Clients.OpenLibrary;
 
-public sealed class OpenLibraryClient(HttpClient httpClient) : IBookCatalog
+public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory) : IOpenLibraryApiClient
 {
     private const string Fields = "key,title,author_name,first_publish_year,cover_i,editions,editions.key,editions.title";
 
@@ -15,6 +15,7 @@ public sealed class OpenLibraryClient(HttpClient httpClient) : IBookCatalog
     {
         try
         {
+            using var httpClient = httpClientFactory.CreateClient(OpenLibraryApiOptions.SectionName);
             // Fetch a small candidate pool; result selection belongs to the service.
             var path = $"search.json?q={Uri.EscapeDataString(query)}&limit=20&fields={Fields}";
             using var response = await httpClient.GetAsync(path, cancellationToken);

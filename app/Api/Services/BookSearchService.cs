@@ -1,9 +1,9 @@
-using FindBook.Api.Contracts;
-using FindBook.Domain.Interfaces;
+using FindBook.Domain.Models;
+using FindBook.Domain.Clients.OpenLibrary;
 
 namespace FindBook.Api.Services;
 
-public sealed class BookSearchService(IBookCatalog catalog)
+public sealed class BookSearchService(IOpenLibraryApiClient catalog)
 {
     public async Task<SearchResponse> SearchAsync(string query, CancellationToken cancellationToken)
     {

@@ -1,8 +1,8 @@
 using FindBook.Domain.Models;
 
-namespace FindBook.Domain.Interfaces;
+namespace FindBook.Domain.Clients.OpenLibrary;
 
-public interface IBookCatalog
+public interface IOpenLibraryApiClient
 {
     Task<IReadOnlyList<CatalogBook>> SearchAsync(string query, CancellationToken cancellationToken);
 }

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace FindBook.Api.Clients.AI;
+namespace FindBook.Domain.Clients.AI;
 
 public static class Safeguard
 {

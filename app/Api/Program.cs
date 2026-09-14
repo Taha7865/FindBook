@@ -1,23 +1,30 @@
-using FindBook.Api.Clients.OpenLibrary;
-using FindBook.Api.Configuration;
+using FindBook.Domain.Clients.OpenLibrary;
 using FindBook.Api.Services;
-using FindBook.Domain.Interfaces;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
-builder.Services.AddOptions<OpenLibraryOptions>()
-    .BindConfiguration("OpenLibrary")
+builder.Services.AddOptions<OpenLibraryApiOptions>()
+    .BindConfiguration(OpenLibraryApiOptions.SectionName)
     .ValidateDataAnnotations()
+    .Validate(options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps),
+        "OpenLibraryApi:BaseUrl must be an absolute HTTP or HTTPS URL.")
+    .Validate(options => options.TimeoutSettings > TimeSpan.Zero
+        && options.TimeoutSettings <= TimeSpan.FromSeconds(60),
+        "OpenLibraryApi:TimeoutSettings must be greater than zero and at most one minute.")
     .ValidateOnStart();
-builder.Services.AddHttpClient<IBookCatalog, OpenLibraryClient>((services, client) =>
+builder.Services.AddSingleton<IOpenLibraryApiOptions>(services =>
+    services.GetRequiredService<IOptions<OpenLibraryApiOptions>>().Value);
+builder.Services.AddHttpClient(OpenLibraryApiOptions.SectionName, (services, client) =>
 {
-    var options = services.GetRequiredService<IOptions<OpenLibraryOptions>>().Value;
+    var options = services.GetRequiredService<IOpenLibraryApiOptions>();
     client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
-    client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
+    client.Timeout = options.TimeoutSettings;
     client.DefaultRequestHeaders.UserAgent.ParseAdd("FindBook/0.1 (+https://github.com/Taha7865/FindBook)");
 });
+builder.Services.AddTransient<IOpenLibraryApiClient, OpenLibraryApiClient>();
 builder.Services.AddScoped<BookSearchService>();
 
 var app = builder.Build();

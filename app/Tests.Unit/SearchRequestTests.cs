@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using FindBook.Api.Contracts;
+using FindBook.Domain.Models;
 
 namespace FindBook.Tests.Unit;
 

@@ -1,5 +1,5 @@
 using System.Text.Json;
-using FindBook.Api.Clients.AI;
+using FindBook.Domain.Clients.AI;
 
 namespace FindBook.Tests.Unit;
 

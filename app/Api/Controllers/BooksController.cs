@@ -1,4 +1,4 @@
-using FindBook.Api.Contracts;
+using FindBook.Domain.Models;
 using FindBook.Api.Services;
 using FindBook.Domain.Exceptions;
 using Microsoft.AspNetCore.Mvc;

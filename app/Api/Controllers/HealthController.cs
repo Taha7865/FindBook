@@ -1,4 +1,4 @@
-using FindBook.Api.Contracts;
+using FindBook.Domain.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FindBook.Api.Controllers;

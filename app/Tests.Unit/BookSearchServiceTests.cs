@@ -1,5 +1,5 @@
 using FindBook.Api.Services;
-using FindBook.Domain.Interfaces;
+using FindBook.Domain.Clients.OpenLibrary;
 using FindBook.Domain.Models;
 
 namespace FindBook.Tests.Unit;
@@ -42,7 +42,7 @@ public sealed class BookSearchServiceTests
     private static CatalogBook Book(string id, string title, params CatalogEdition[] editions)
         => new(id, title, ["A Writer"], null, null, editions);
 
-    private sealed class StubCatalog(IReadOnlyList<CatalogBook> books) : IBookCatalog
+    private sealed class StubCatalog(IReadOnlyList<CatalogBook> books) : IOpenLibraryApiClient
     {
         public string? Query { get; private set; }
         public CancellationToken Token { get; private set; }

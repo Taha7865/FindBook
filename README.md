@@ -4,7 +4,7 @@ A book search application built with .NET 8. Next.js will be added for the front
 
 Current status: `GET /api/health` and `POST /api/books/search` work. Search calls Open Library directly. AI integration, final matching rules, and the frontend are not implemented yet.
 
-Search contracts are defined in `app/Api/Contracts`. Queries must contain non-whitespace text and be at most 1,000 characters. Results use `authors[]`; primary-author and contributor-role resolution is deferred with a TODO. Edition publication dates remain separate from the work's first publication year.
+Request and response models are defined in `app/Domain/Models`. Queries must contain non-whitespace text and be at most 1,000 characters. Results use `authors[]`; primary-author and contributor-role resolution is deferred with a TODO. Edition publication dates remain separate from the work's first publication year.
 
 `Safeguard` provides a short system instruction and a JSON-encoded user message for the future AI client. It preserves book text and labels it as untrusted data. This is a basic prompt precaution, not reliable injection detection. It is not connected to a model yet; structured response validation will be added with the client.
 
@@ -12,12 +12,14 @@ Search contracts are defined in `app/Api/Contracts`. Queries must contain non-wh
 
 ```text
 app/
-  Api/         Controllers, configuration, services, and external clients
-  Domain/      Class library for book models and matching rules
+  Api/         Controllers, services, appsettings, and DI registration
+  Domain/      Clients, typed options, models, and matching rules
   Tests.Unit/  Unit-test project
 ```
 
-Api references Domain. Domain defines catalog models and the `IBookCatalog` interface without external dependencies. `BooksController` calls `BookSearchService`, which receives `IBookCatalog` through its constructor. `Program.cs` registers `OpenLibraryClient` as that implementation using .NET's HTTP client factory. The service is scoped to the request. Public API contracts and provider JSON models stay in Api.
+Api references Domain. `BooksController` calls `BookSearchService`, which receives `IOpenLibraryApiClient` through its constructor. Domain owns `OpenLibraryApiClient`, its interface and options, all models, and the AI safeguard. It references `Microsoft.Extensions.Http` for `IHttpClientFactory`.
+
+`Program.cs` binds appsettings to `OpenLibraryApiOptions` and exposes it as `IOpenLibraryApiOptions`. Those options configure the named HTTP client. `OpenLibraryApiClient` receives `IHttpClientFactory` and requests that client for each call; the factory manages the underlying connections. The API client is transient and the search service is scoped to the request.
 
 ## Run locally
 
@@ -50,7 +52,16 @@ The client requests 20 candidates and the service returns up to five distinct wo
 | 503 | Open Library is unavailable or rate-limited the request. |
 | 504 | Open Library did not respond within the timeout. |
 
-Open Library's base URL and 15-second timeout are in `app/Api/appsettings.json`. Environment variables `OpenLibrary__BaseUrl` and `OpenLibrary__TimeoutSeconds` can override them. No automatic retries are made. Client cancellation is passed through to the catalog request.
+Open Library settings live in `app/Api/appsettings.json`:
+
+```json
+"OpenLibraryApi": {
+  "BaseUrl": "https://openlibrary.org/",
+  "TimeoutSettings": "00:00:15"
+}
+```
+
+`OpenLibraryApiOptions` inherits `BaseUrl` and the `TimeSpan` timeout from `HttpClientOptions`; it contains no setting values. Startup validates the URL and a timeout greater than zero and at most one minute. Environment variables `OpenLibraryApi__BaseUrl` and `OpenLibraryApi__TimeoutSettings` can override appsettings. No automatic retries are made. Client cancellation is passed through to the catalog request.
 
 For the user-local SDK installed during setup, first run:
 
@@ -77,7 +88,7 @@ The Dockerfile builds with the SDK and runs the compiled API in a smaller ASP.NE
 dotnet build --configuration Release --no-restore
 ```
 
-The build, release publish, and a live search for “the hobbit” were checked locally. Full HTTP checks with a local catalog fixture verified validation, grouped results, empty results, and error status/content types. Docker execution has not been verified on this machine.
+The build, release publish, and a live search for “the hobbit” were checked locally. Full HTTP checks with a local catalog fixture verified validation, grouped results, empty results, and error status/content types. Configuration checks verified the named client's base URL and timeout, and startup rejection of invalid settings. Docker execution has not been verified on this machine.
 
 Run unit tests with `dotnet test --configuration Release`. They use controlled catalog responses to check validation, query encoding, missing metadata, work/edition grouping, the result limit, and error/cancellation handling. Safeguard tests check message encoding, not model resistance to prompt injection. No CI workflow is configured.
 

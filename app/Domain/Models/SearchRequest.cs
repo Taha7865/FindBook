@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace FindBook.Api.Contracts;
+namespace FindBook.Domain.Models;
 
 public sealed class SearchRequest
 {

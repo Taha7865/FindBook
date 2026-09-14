@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace FindBook.Api.Clients.OpenLibrary;
+namespace FindBook.Domain.Models;
 
 internal sealed class OpenLibraryResponse
 {

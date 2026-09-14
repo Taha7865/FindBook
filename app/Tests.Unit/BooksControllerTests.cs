@@ -1,9 +1,8 @@
-using FindBook.Api.Contracts;
+using FindBook.Domain.Models;
 using FindBook.Api.Controllers;
 using FindBook.Api.Services;
 using FindBook.Domain.Exceptions;
-using FindBook.Domain.Interfaces;
-using FindBook.Domain.Models;
+using FindBook.Domain.Clients.OpenLibrary;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FindBook.Tests.Unit;
@@ -25,7 +24,7 @@ public sealed class BooksControllerTests
         Assert.Equal(status, Assert.IsType<ProblemDetails>(result.Value).Status);
     }
 
-    private sealed class FailingCatalog(CatalogFailure failure) : IBookCatalog
+    private sealed class FailingCatalog(CatalogFailure failure) : IOpenLibraryApiClient
     {
         public Task<IReadOnlyList<CatalogBook>> SearchAsync(string query, CancellationToken cancellationToken)
             => throw new CatalogException(failure);

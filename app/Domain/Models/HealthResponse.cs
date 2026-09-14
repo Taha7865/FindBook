@@ -1,3 +1,3 @@
-namespace FindBook.Api.Contracts;
+namespace FindBook.Domain.Models;
 
 public sealed record HealthResponse(string Status);
