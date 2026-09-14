@@ -4,6 +4,10 @@ A book search application built with .NET 8. Next.js will be added for the front
 
 Current status: API setup with `GET /api/health`. Search, AI integration, and the frontend are not implemented yet.
 
+Search contracts are defined in `app/Api/Contracts`. Queries must contain non-whitespace text and be at most 1,000 characters. Results use `authors[]`; primary-author and contributor-role resolution is deferred with a TODO. Edition publication dates remain separate from the work's first publication year.
+
+`AiPromptSafeguard` provides a short system instruction and a JSON-encoded user message for the future AI client. It preserves book text and labels it as untrusted data. This is a basic prompt precaution, not reliable injection detection. It is not connected to a model yet; structured response validation will be added with the client.
+
 ## Structure
 
 ```text
@@ -13,7 +17,7 @@ app/
   Tests.Unit/  Unit-test project
 ```
 
-Api references Domain. Domain has no external dependencies. Services will coordinate searches; separate clients will handle Gemini and Open Library calls. Public API contracts belong in Api. Domain and Tests.Unit have no implementation code yet.
+Api references Domain. Domain has no external dependencies. Services will coordinate searches; separate clients will handle Gemini and Open Library calls. Public API contracts belong in Api. Domain has no implementation code yet.
 
 ## Run locally
 
@@ -53,7 +57,7 @@ dotnet build --configuration Release --no-restore
 
 The initial build, release publish, and live health response were checked locally. Docker execution has not been verified on this machine.
 
-The test project uses xUnit. Tests will be added with matching and service behavior; there are no unit tests yet. No CI workflow is configured.
+Run unit tests with `dotnet test --configuration Release`. They cover missing and blank queries, the length boundary, valid book text, and safe JSON encoding of instruction-like input. They do not measure a model's resistance to prompt injection. No CI workflow is configured.
 
 ## Planned search behavior
 

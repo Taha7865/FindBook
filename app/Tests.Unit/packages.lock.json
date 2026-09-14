@@ -109,6 +109,12 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "api": {
+        "type": "Project",
+        "dependencies": {
+          "Domain": "[1.0.0, )"
+        }
+      },
       "domain": {
         "type": "Project"
       }
