@@ -30,7 +30,7 @@ public sealed class GeminiApiClient(IHttpClientFactory httpClientFactory, IGemin
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(options.ApiKey))
-            throw new BookSearchAiException(BookSearchAiFailure.NotConfigured);
+            throw new GeminiApiException(GeminiApiFailureReason.NotConfigured);
 
         try
         {
@@ -53,33 +53,33 @@ public sealed class GeminiApiClient(IHttpClientFactory httpClientFactory, IGemin
 
             using var response = await httpClient.SendAsync(request, cancellationToken);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                throw new BookSearchAiException(BookSearchAiFailure.NotConfigured);
+                throw new GeminiApiException(GeminiApiFailureReason.NotConfigured);
             if (response.StatusCode == HttpStatusCode.RequestTimeout)
-                throw new BookSearchAiException(BookSearchAiFailure.Timeout);
+                throw new GeminiApiException(GeminiApiFailureReason.Timeout);
             if (response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500)
-                throw new BookSearchAiException(BookSearchAiFailure.Unavailable);
+                throw new GeminiApiException(GeminiApiFailureReason.Unavailable);
             if (!response.IsSuccessStatusCode)
-                throw new BookSearchAiException(BookSearchAiFailure.BadResponse);
+                throw new GeminiApiException(GeminiApiFailureReason.BadResponse);
 
             var body = await response.Content.ReadFromJsonAsync<GeminiResponse>(cancellationToken);
             if (body?.Candidates is not { Length: 1 } || body.Candidates[0] is not { FinishReason: "STOP" } candidate
                 || candidate.Content?.Parts is not { Length: > 0 } parts)
-                throw new BookSearchAiException(BookSearchAiFailure.BadResponse);
+                throw new GeminiApiException(GeminiApiFailureReason.BadResponse);
 
             var outputText = string.Concat(parts.Where(part => part is not null && !part.Thought).Select(part => part.Text));
-            return JsonSerializer.Deserialize<T>(outputText, OutputJson) ?? throw new BookSearchAiException(BookSearchAiFailure.BadResponse);
+            return JsonSerializer.Deserialize<T>(outputText, OutputJson) ?? throw new GeminiApiException(GeminiApiFailureReason.BadResponse);
         }
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new BookSearchAiException(BookSearchAiFailure.Timeout, exception);
+            throw new GeminiApiException(GeminiApiFailureReason.Timeout, exception);
         }
         catch (HttpRequestException exception)
         {
-            throw new BookSearchAiException(BookSearchAiFailure.Unavailable, exception);
+            throw new GeminiApiException(GeminiApiFailureReason.Unavailable, exception);
         }
         catch (JsonException exception)
         {
-            throw new BookSearchAiException(BookSearchAiFailure.BadResponse, exception);
+            throw new GeminiApiException(GeminiApiFailureReason.BadResponse, exception);
         }
     }
 }

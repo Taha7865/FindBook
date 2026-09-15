@@ -23,11 +23,11 @@ public sealed class BooksControllerTests
     }
 
     [Theory]
-    [InlineData(BookSearchAiFailure.BadResponse, 502)]
-    [InlineData(BookSearchAiFailure.Unavailable, 503)]
-    [InlineData(BookSearchAiFailure.NotConfigured, 503)]
-    [InlineData(BookSearchAiFailure.Timeout, 504)]
-    public async Task Ai_failures_return_problem_details(BookSearchAiFailure failure, int status)
+    [InlineData(GeminiApiFailureReason.BadResponse, 502)]
+    [InlineData(GeminiApiFailureReason.Unavailable, 503)]
+    [InlineData(GeminiApiFailureReason.NotConfigured, 503)]
+    [InlineData(GeminiApiFailureReason.Timeout, 504)]
+    public async Task Ai_failures_return_problem_details(GeminiApiFailureReason failure, int status)
     {
         var controller = new BooksController(new BookSearchService(new StubGemini(failure),
             new FailingCatalog(CatalogFailure.BadResponse), new BookSearchValidator()));
@@ -48,10 +48,10 @@ public sealed class BooksControllerTests
             => throw new CatalogException(failure);
     }
 
-    private sealed class StubGemini(BookSearchAiFailure? failure = null) : IGeminiApiClient
+    private sealed class StubGemini(GeminiApiFailureReason? failure = null) : IGeminiApiClient
     {
         public Task<BookSearchTerms> ExtractSearchTermsAsync(string userQuery, CancellationToken cancellationToken)
-            => failure is { } error ? throw new BookSearchAiException(error) : Task.FromResult(new BookSearchTerms("Example", null, [], null, []));
+            => failure is { } error ? throw new GeminiApiException(error) : Task.FromResult(new BookSearchTerms("Example", null, [], null, []));
         public Task<BookSelection> SelectBooksAsync(string userQuery, IReadOnlyList<CatalogBook> booksFromOpenLibrary,
             CancellationToken cancellationToken) => throw new InvalidOperationException("Must not reach selection.");
     }

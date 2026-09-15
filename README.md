@@ -15,7 +15,7 @@ app/
 
 `BooksController` calls `BookSearchService`. The service receives `IGeminiApiClient`, `IOpenLibraryApiClient`, and `IBookSearchValidator` through constructor injection. Clients live in Domain and use named clients from `IHttpClientFactory`. `Program.cs` binds typed options to appsettings, registers clients as transient, and registers the service and validator as scoped. No AI SDK or agent framework is used.
 
-`BookSearchAiException` identifies failures in AI extraction, selection, or output validation. Its `BookSearchAiFailure` value distinguishes invalid output, unavailable service, timeout, and missing configuration. The controller maps these to HTTP error responses without exposing provider response bodies or credentials.
+`GeminiApiException` identifies failures in AI extraction, selection, or output validation. Its `GeminiApiFailureReason` value distinguishes invalid output, unavailable service, timeout, and missing configuration. The controller maps these to HTTP error responses without exposing provider response bodies or credentials.
 
 ## Search flow
 

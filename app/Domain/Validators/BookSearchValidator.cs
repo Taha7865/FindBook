@@ -10,13 +10,13 @@ public sealed class BookSearchValidator : IBookSearchValidator
         if (searchTerms is null || !IsOptionalText(searchTerms.Title) || !IsOptionalText(searchTerms.Author)
             || !IsTextList(searchTerms.Keywords, 8) || !IsTextList(searchTerms.EditionKeywords, 5)
             || searchTerms.EditionYear is < 1 or > 9999)
-            throw new BookSearchAiException(BookSearchAiFailure.BadResponse);
+            throw new GeminiApiException(GeminiApiFailureReason.BadResponse);
     }
 
     public void ValidateSelection(BookSelection selection, IReadOnlyList<CatalogBook> booksFromOpenLibrary)
     {
         if (selection?.Books is null || selection.Books.Length > 5)
-            throw new BookSearchAiException(BookSearchAiFailure.BadResponse);
+            throw new GeminiApiException(GeminiApiFailureReason.BadResponse);
 
         var availableIds = booksFromOpenLibrary.Select(book => book.OpenLibraryWorkId).ToHashSet(StringComparer.Ordinal);
         var selectedIds = new HashSet<string>(StringComparer.Ordinal);
@@ -25,7 +25,7 @@ public sealed class BookSearchValidator : IBookSearchValidator
             if (book is null || string.IsNullOrWhiteSpace(book.OpenLibraryWorkId)
                 || !availableIds.Contains(book.OpenLibraryWorkId) || !selectedIds.Add(book.OpenLibraryWorkId)
                 || string.IsNullOrWhiteSpace(book.Explanation) || book.Explanation.Length > 500)
-                throw new BookSearchAiException(BookSearchAiFailure.BadResponse);
+                throw new GeminiApiException(GeminiApiFailureReason.BadResponse);
         }
     }
 
