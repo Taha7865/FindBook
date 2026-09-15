@@ -50,7 +50,7 @@ public sealed class BookSearchServiceTests
     [InlineData("The Hobbit by Tolkien", "The Hobbit", "Tolkien")]
     [InlineData("The Hobbit (Tolkien)", "The Hobbit", "Tolkien")]
     [InlineData("les miserables", "Les Misérables", "Victor Hugo")]
-    public async Task Exact_query_match_moves_above_partial_matches_without_duplicates(string query, string title, string author)
+    public async Task Unique_exact_query_match_returns_one_winner(string query, string title, string author)
     {
         var calls = new List<string>();
         var gemini = new StubGemini(calls)
@@ -65,14 +65,13 @@ public sealed class BookSearchServiceTests
 
         var response = await new BookSearchService(gemini, catalog, new BookSearchValidator()).SearchAsync(query, default);
 
-        Assert.Equal(new[] { "OL2W", "OL1W" }, response.Matches.Select(book => book.OpenLibraryWorkId));
+        Assert.Equal("OL2W", Assert.Single(response.Matches).OpenLibraryWorkId);
         Assert.StartsWith("The query matches this book's title", response.Matches[0].Explanation);
-        Assert.Equal("A related book.", response.Matches[1].Explanation);
         Assert.Equal(new[] { "extract", "catalog", "select" }, calls);
     }
 
     [Fact]
-    public async Task Exact_match_omitted_by_gemini_is_included_within_the_five_result_limit()
+    public async Task Unique_exact_title_omitted_by_gemini_is_returned_alone()
     {
         var calls = new List<string>();
         var relatedBooks = Enumerable.Range(1, 5).Select(index => Book($"OL{index}W", $"A companion book {index}")).ToArray();
@@ -84,7 +83,7 @@ public sealed class BookSearchServiceTests
 
         var response = await new BookSearchService(gemini, catalog, new BookSearchValidator()).SearchAsync("The Hobbit", default);
 
-        Assert.Equal(new[] { "OL6W", "OL1W", "OL2W", "OL3W", "OL4W" }, response.Matches.Select(book => book.OpenLibraryWorkId));
+        Assert.Equal("OL6W", Assert.Single(response.Matches).OpenLibraryWorkId);
         Assert.Equal("The query matches this book's title.", response.Matches[0].Explanation);
     }
 
@@ -262,6 +261,222 @@ public sealed class BookSearchServiceTests
         Assert.Equal(edition.Notes, result.Notes);
     }
 
+    [Fact]
+    public async Task Verified_work_author_beats_a_more_popular_contributor_match_selected_by_gemini()
+    {
+        var calls = new List<string>();
+        var gemini = new StubGemini(calls)
+        {
+            Selection = new([new("OL1W", "The name appears as an illustrator.")])
+        };
+        var catalog = new StubCatalog(calls,
+        [
+            Book("OL1W", "The Hobbit", new CatalogEdition("OL1M", "The Hobbit", null)
+                { Contributions = ["Tolkien (Illustrator)"] }) with { ReadingLogCount = 900 },
+            Book("OL2W", "The Hobbit") with { ReadingLogCount = 10 }
+        ])
+        {
+            Works = new() { ["OL1W"] = new("OL1W", ["OL2A"]) },
+            Authors = new() { ["OL2A"] = new("OL2A", "Another Writer", []) }
+        };
+
+        var response = await new BookSearchService(gemini, catalog, new BookSearchValidator())
+            .SearchAsync("The Hobbit by Tolkien", default);
+
+        Assert.Equal("OL2W", Assert.Single(response.Matches).OpenLibraryWorkId);
+        Assert.Contains("work record", response.Matches[0].Explanation);
+        Assert.Equal("Tolkien", gemini.SuppliedBooks![1].WorkAuthors[0].Name);
+    }
+
+    [Fact]
+    public async Task Fetched_author_alias_can_establish_the_exact_author_match()
+    {
+        var calls = new List<string>();
+        var catalog = new StubCatalog(calls, [Book("OL1W", "The Hobbit")])
+        {
+            Authors = new() { ["OL1A"] = new("OL1A", "J. R. R. Tolkien", ["Tolkien"]) }
+        };
+
+        var response = await new BookSearchService(new StubGemini(calls), catalog, new BookSearchValidator())
+            .SearchAsync("The Hobbit by Tolkien", default);
+
+        Assert.Contains("work record", Assert.Single(response.Matches).Explanation);
+    }
+
+    [Fact]
+    public async Task Multiple_exact_work_author_matches_remain_multiple_even_with_different_popularity()
+    {
+        var calls = new List<string>();
+        var catalog = new StubCatalog(calls,
+        [
+            Book("OL1W", "The Hobbit") with { ReadingLogCount = 10 },
+            Book("OL2W", "The Hobbit") with { ReadingLogCount = 20 },
+            Book("OL3W", "A related book")
+        ]);
+
+        var response = await new BookSearchService(new StubGemini(calls), catalog, new BookSearchValidator())
+            .SearchAsync("The Hobbit by Tolkien", default);
+
+        Assert.Equal(new[] { "OL2W", "OL1W" }, response.Matches.Select(book => book.OpenLibraryWorkId));
+    }
+
+    [Fact]
+    public async Task Title_only_selects_the_uniquely_most_popular_exact_title()
+    {
+        var calls = new List<string>();
+        var catalog = new StubCatalog(calls,
+        [
+            Book("OL1W", "The Hobbit") with { ReadingLogCount = 10 },
+            Book("OL2W", "The Hobbit") with { ReadingLogCount = 200 },
+            Book("OL3W", "A guide to The Hobbit") with { ReadingLogCount = 900 }
+        ]);
+
+        var response = await new BookSearchService(new StubGemini(calls), catalog, new BookSearchValidator())
+            .SearchAsync("The Hobbit", default);
+
+        Assert.Equal("OL2W", Assert.Single(response.Matches).OpenLibraryWorkId);
+        Assert.Contains("reading-list count", response.Matches[0].Explanation);
+    }
+
+    [Theory]
+    [InlineData(10, 10)]
+    [InlineData(null, null)]
+    [InlineData(0, null)]
+    public async Task Equal_or_unreported_popularity_does_not_establish_a_title_only_winner(int? firstCount, int? secondCount)
+    {
+        var calls = new List<string>();
+        var catalog = new StubCatalog(calls,
+        [
+            Book("OL1W", "The Hobbit") with { ReadingLogCount = firstCount },
+            Book("OL2W", "The Hobbit") with { ReadingLogCount = secondCount }
+        ]);
+
+        var response = await new BookSearchService(new StubGemini(calls), catalog, new BookSearchValidator())
+            .SearchAsync("The Hobbit", default);
+
+        Assert.Equal(2, response.Matches.Length);
+    }
+
+    [Fact]
+    public async Task A_missing_count_does_not_veto_the_most_popular_reported_exact_title()
+    {
+        var calls = new List<string>();
+        var catalog = new StubCatalog(calls,
+        [
+            Book("OL1W", "The Hobbit") with { ReadingLogCount = 10 },
+            Book("OL2W", "The Hobbit") with { ReadingLogCount = 200 },
+            Book("OL3W", "The Hobbit") with { ReadingLogCount = null }
+        ]);
+
+        var response = await new BookSearchService(new StubGemini(calls), catalog, new BookSearchValidator())
+            .SearchAsync("The Hobbit", default);
+
+        Assert.Equal("OL2W", Assert.Single(response.Matches).OpenLibraryWorkId);
+        Assert.Contains("highest reported", response.Matches[0].Explanation);
+    }
+
+    [Fact]
+    public async Task Missing_work_author_data_does_not_turn_a_listed_name_into_a_verified_match()
+    {
+        var calls = new List<string>();
+        var catalog = new StubCatalog(calls, [Book("OL1W", "The Hobbit")])
+        {
+            Works = new() { ["OL1W"] = null }
+        };
+        var gemini = new StubGemini(calls);
+
+        var response = await new BookSearchService(gemini, catalog, new BookSearchValidator())
+            .SearchAsync("The Hobbit by Tolkien", default);
+
+        Assert.Empty(response.Matches);
+        Assert.Empty(gemini.SuppliedBooks![0].WorkAuthors);
+    }
+
+    [Fact]
+    public async Task Optional_verification_failure_keeps_search_results_without_claiming_authorship()
+    {
+        var calls = new List<string>();
+        var catalog = new StubCatalog(calls, [Book("OL1W", "The Hobbit"), Book("OL2W", "Another title")])
+        {
+            WorkFailure = CatalogFailure.Unavailable
+        };
+        var gemini = new StubGemini(calls)
+        {
+            Selection = new([new("OL1W", "The title and listed name are a possible match.")])
+        };
+
+        var response = await new BookSearchService(gemini, catalog, new BookSearchValidator())
+            .SearchAsync("The Hobbit by Tolkien", default);
+
+        Assert.Single(catalog.WorkRequests);
+        Assert.Empty(gemini.SuppliedBooks![0].WorkAuthors);
+        Assert.Equal(gemini.Selection.Books[0].Explanation, Assert.Single(response.Matches).Explanation);
+    }
+
+    [Fact]
+    public async Task Author_only_keeps_five_selected_books_and_orders_them_by_popularity()
+    {
+        var calls = new List<string>();
+        var books = Enumerable.Range(1, 5).Select(index => Book($"OL{index}W", index == 1 ? "Tolkien" : $"Book {index}")
+            with
+        { ReadingLogCount = index * 10 }).ToArray();
+        var gemini = new StubGemini(calls)
+        {
+            SearchTerms = new(null, "Tolkien", [], null, []),
+            Selection = new(books.Select(book => new SelectedBook(book.OpenLibraryWorkId, "A book by the requested author.")).ToArray())
+        };
+        var catalog = new StubCatalog(calls, books);
+
+        var response = await new BookSearchService(gemini, catalog, new BookSearchValidator())
+            .SearchAsync("Tolkien", default);
+
+        Assert.Equal(new[] { "OL5W", "OL4W", "OL3W", "OL2W", "OL1W" }, response.Matches.Select(book => book.OpenLibraryWorkId));
+        Assert.Equal(5, catalog.WorkRequests.Count);
+        Assert.Single(catalog.AuthorRequests);
+    }
+
+    [Fact]
+    public async Task Verification_prioritizes_exact_candidates_and_checks_at_most_five_works()
+    {
+        var calls = new List<string>();
+        var books = Enumerable.Range(1, 6).Select(index => Book($"OL{index}W", index == 6 ? "The Hobbit" : $"Book {index}")).ToArray();
+        var catalog = new StubCatalog(calls, books);
+
+        await new BookSearchService(new StubGemini(calls), catalog, new BookSearchValidator()).SearchAsync("The Hobbit", default);
+
+        Assert.Equal(5, catalog.WorkRequests.Count);
+        Assert.Equal("OL6W", catalog.WorkRequests[0]);
+        Assert.Single(catalog.AuthorRequests);
+    }
+
+    [Fact]
+    public async Task Verification_caps_distinct_author_lookups_at_ten()
+    {
+        var calls = new List<string>();
+        var catalog = new StubCatalog(calls, [Book("OL1W", "The Hobbit")])
+        {
+            Works = new() { ["OL1W"] = new("OL1W", Enumerable.Range(1, 15).Select(i => $"OL{i}A").ToArray()) },
+            Authors = Enumerable.Range(1, 15).ToDictionary(i => $"OL{i}A", i => (CatalogAuthor?)new CatalogAuthor($"OL{i}A", $"Writer {i}", []))
+        };
+
+        await new BookSearchService(new StubGemini(calls), catalog, new BookSearchValidator()).SearchAsync("The Hobbit", default);
+
+        Assert.Equal(10, catalog.AuthorRequests.Count);
+    }
+
+    [Fact]
+    public async Task Verification_does_not_swallow_caller_cancellation()
+    {
+        var calls = new List<string>();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            new BookSearchService(new StubGemini(calls), new StubCatalog(calls, [Book("OL1W", "The Hobbit")]), new BookSearchValidator())
+                .SearchAsync("The Hobbit", cancellation.Token));
+        Assert.DoesNotContain("select", calls);
+    }
+
     private sealed class StubGemini(List<string> calls) : IGeminiApiClient
     {
         public BookSearchTerms SearchTerms { get; init; } = new("The Hobbit", null, [], null, []);
@@ -293,8 +508,35 @@ public sealed class BookSearchServiceTests
     private sealed class StubCatalog(List<string> calls, IReadOnlyList<CatalogBook> books) : IOpenLibraryApiClient
     {
         public List<BookSearchTerms> Searches { get; } = [];
+        public List<string> WorkRequests { get; } = [];
+        public List<string> AuthorRequests { get; } = [];
+        public Dictionary<string, CatalogWork?> Works { get; init; } = [];
+        public Dictionary<string, CatalogAuthor?> Authors { get; init; } = [];
+        public CatalogFailure? WorkFailure { get; init; }
         public bool EmptyFirstSearch { get; init; }
         public CancellationToken Token { get; private set; }
+
+        private string[] AuthorNames => books.SelectMany(book => book.Authors).Distinct().ToArray();
+
+        public Task<CatalogWork?> GetWorkAsync(string workId, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            WorkRequests.Add(workId);
+            if (WorkFailure is { } failure) throw new CatalogException(failure);
+            if (Works.TryGetValue(workId, out var work)) return Task.FromResult(work);
+            var book = books.First(book => book.OpenLibraryWorkId == workId);
+            return Task.FromResult<CatalogWork?>(new(workId,
+                book.Authors.Select(name => $"OL{Array.IndexOf(AuthorNames, name) + 1}A").ToArray()));
+        }
+
+        public Task<CatalogAuthor?> GetAuthorAsync(string authorId, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AuthorRequests.Add(authorId);
+            if (Authors.TryGetValue(authorId, out var author)) return Task.FromResult(author);
+            var index = int.Parse(authorId[2..^1]) - 1;
+            return Task.FromResult<CatalogAuthor?>(new(authorId, AuthorNames[index], []));
+        }
 
         public Task<IReadOnlyList<CatalogBook>> SearchAsync(BookSearchTerms searchTerms, CancellationToken cancellationToken)
         {

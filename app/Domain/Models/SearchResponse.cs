@@ -5,7 +5,7 @@ public sealed record SearchResponse(BookMatch[] Matches);
 public sealed record BookMatch(
     string OpenLibraryWorkId,
     string Title,
-    // TODO: Resolve primary authors and contributor roles from fetched work/edition data.
+    // Display names from search; work-author verification is used internally for selection.
     string[] Authors,
     int? FirstPublishYear,
     string OpenLibraryUrl,

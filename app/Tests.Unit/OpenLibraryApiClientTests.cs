@@ -152,6 +152,97 @@ public sealed class OpenLibraryApiClientTests
         await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(new(null, "J. K. Rowling", [], null, []), default);
     }
 
+    [Fact]
+    public async Task Work_details_return_author_ids_from_nested_author_links()
+    {
+        using var http = CreateHttp((request, _) =>
+        {
+            Assert.Equal("/works/OL1W.json", request.RequestUri!.AbsolutePath);
+            return Task.FromResult(Json("""
+                {"key":"/works/OL1W","authors":[
+                  {"author":{"key":"/authors/OL2A"}},
+                  {"author":{"key":"/authors/OL2A"}},
+                  {"author":{"key":"/authors/OL3A"}},
+                  {"author":{"key":"https://other.example/OL4A"}},null]}
+                """));
+        });
+
+        var work = await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions())
+            .GetWorkAsync("OL1W", default);
+
+        Assert.Equal("OL1W", work!.OpenLibraryWorkId);
+        Assert.Equal(new[] { "OL2A", "OL3A" }, work.AuthorIds);
+    }
+
+    [Fact]
+    public async Task Author_details_return_name_and_cleaned_alternate_names()
+    {
+        using var http = CreateHttp((request, _) =>
+        {
+            Assert.Equal("/authors/OL2A.json", request.RequestUri!.AbsolutePath);
+            return Task.FromResult(Json("""
+                {"key":"/authors/OL2A","name":"J. R. R. Tolkien",
+                 "alternate_names":["Tolkien",null," ","tolkien"]}
+                """));
+        });
+
+        var author = await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions())
+            .GetAuthorAsync("OL2A", default);
+
+        Assert.Equal("J. R. R. Tolkien", author!.Name);
+        Assert.Equal("Tolkien", Assert.Single(author.AlternateNames));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Missing_detail_record_returns_null(bool fetchWork)
+    {
+        using var http = CreateHttp((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)));
+        var client = new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions());
+
+        if (fetchWork) Assert.Null(await client.GetWorkAsync("OL1W", default));
+        else Assert.Null(await client.GetAuthorAsync("OL1A", default));
+    }
+
+    [Theory]
+    [InlineData(true, "{\"key\":\"/works/OL2W\"}")]
+    [InlineData(false, "{\"key\":\"/authors/OL2A\",\"name\":\"Wrong person\"}")]
+    [InlineData(false, "{\"key\":\"/authors/OL1A\",\"name\":\" \"}")]
+    [InlineData(true, "not json")]
+    public async Task Detail_response_rejects_mismatched_ids_missing_names_and_invalid_json(bool fetchWork, string body)
+    {
+        using var http = CreateHttp((_, _) => Task.FromResult(Json(body)));
+        var client = new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions());
+
+        var exception = await Assert.ThrowsAsync<CatalogException>(async () =>
+        {
+            if (fetchWork) await client.GetWorkAsync("OL1W", default);
+            else await client.GetAuthorAsync("OL1A", default);
+        });
+        Assert.Equal(CatalogFailure.BadResponse, exception.Failure);
+    }
+
+    [Theory]
+    [InlineData("../OL1W")]
+    [InlineData("https://other.example/OL1W")]
+    [InlineData("OL1A")]
+    public async Task Work_lookup_rejects_invalid_ids_before_sending_a_request(string workId)
+    {
+        using var http = CreateHttp((_, _) => throw new InvalidOperationException("Must not make an HTTP request"));
+        var client = new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions());
+        await Assert.ThrowsAsync<ArgumentException>(() => client.GetWorkAsync(workId, default));
+    }
+
+    [Fact]
+    public async Task Work_lookup_maps_network_failure_through_the_shared_response_reader()
+    {
+        using var http = CreateHttp((_, _) => throw new HttpRequestException("Connection failed"));
+        var exception = await Assert.ThrowsAsync<CatalogException>(() =>
+            new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions()).GetWorkAsync("OL1W", default));
+        Assert.Equal(CatalogFailure.Unavailable, exception.Failure);
+    }
+
     private static BookSearchTerms Terms(string query) => new(null, null, [query], null, []);
 
     private static HttpClient CreateHttp(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send)

@@ -44,6 +44,12 @@ public sealed class BooksControllerTests
 
     private sealed class FailingCatalog(CatalogFailure failure) : IOpenLibraryApiClient
     {
+        public Task<CatalogWork?> GetWorkAsync(string workId, CancellationToken cancellationToken)
+            => throw new NotImplementedException();
+
+        public Task<CatalogAuthor?> GetAuthorAsync(string authorId, CancellationToken cancellationToken)
+            => throw new NotImplementedException();
+
         public Task<IReadOnlyList<CatalogBook>> SearchAsync(BookSearchTerms searchTerms, CancellationToken cancellationToken)
             => throw new CatalogException(failure);
     }

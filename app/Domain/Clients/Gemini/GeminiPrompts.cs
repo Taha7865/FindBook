@@ -75,14 +75,14 @@ public static class GeminiPrompts
         Keep supplied order when there is no evidence to distinguish otherwise equal books.
 
         Explanations must be supported by supplied titles, authors, subjects, or edition data.
-        Assess primary authorship versus contributor roles before applying the hierarchy.
-        Prefer explicit role information in the supplied edition contributions and notes.
-        A person identified only as an illustrator, translator, or editor does not establish
-        a primary-author match. If explicit roles are absent, you may use your knowledge of
-        the supplied title and listed names to judge likely authorship for ranking only.
-        Treat that judgment as uncertain: do not claim that authorship was verified or add
-        an author name that was not supplied. If uncertain, leave the role unresolved and
-        explain the match using the supplied title and listed name instead.
+        workAuthors contains names and aliases fetched from authors linked by the work record.
+        Use these as the catalog evidence for primary authorship; do not use your own knowledge
+        to fill missing roles. An empty workAuthors array means authorship was not verified,
+        not that the listed names are contributors. Edition contributions and notes may
+        explicitly identify an illustrator, translator, or editor. Such a contributor-only
+        match ranks below a work-author match. Missing from workAuthors alone does not prove
+        a contributor role. If the role is unknown, explain the match using the supplied
+        title and listed name without claiming primary authorship.
         The authors array's order or size does not establish roles or co-authorship.
         Only describe a specific author or contributor role in the explanation when the
         supplied catalog text explicitly supports it. You cannot fetch additional records.
