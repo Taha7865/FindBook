@@ -58,16 +58,34 @@ public static class GeminiPrompts
         a supplied author. Judge specificity from the ORIGINAL query: a title you infer
         from a fragment is not a title the user explicitly supplied.
 
+        For a precise title, select one work when its supplied author and other fields
+        distinguish the intended book from the alternatives. A shared title alone does not
+        make every result equally relevant. Use subjects and edition details to distinguish
+        the original book from study guides, music, adaptations, or collections. Prefer the
+        requested format when the user specifies one; otherwise prefer the original book
+        when the supplied fields identify it. Do not fill unused slots with weaker results.
+        If several records appear to represent the same intended book, select one supported
+        representative using the requested edition details, then readingLogCount and supplied
+        order as tie-breakers. If the evidence leaves genuinely different books plausible,
+        return up to five. These are selection judgments, not proof that records are identical.
+
         Among relevant author or topic results, prefer a higher readingLogCount. It measures
         Open Library reading-list activity, not sales or general worldwide popularity.
         Missing counts are unknown. Never let popularity override a stronger title/author match.
         Keep supplied order when there is no evidence to distinguish otherwise equal books.
 
         Explanations must be supported by supplied titles, authors, subjects, or edition data.
-        The authors array does not establish primary or contributor roles. Primary-author
-        verification is unavailable; do not infer it from author position or count.
-        A contributor role may be stated only when explicit in an edition's contributions.
-        Multiple listed names alone do not establish co-authorship.
+        Assess primary authorship versus contributor roles before applying the hierarchy.
+        Prefer explicit role information in the supplied edition contributions and notes.
+        A person identified only as an illustrator, translator, or editor does not establish
+        a primary-author match. If explicit roles are absent, you may use your knowledge of
+        the supplied title and listed names to judge likely authorship for ranking only.
+        Treat that judgment as uncertain: do not claim that authorship was verified or add
+        an author name that was not supplied. If uncertain, leave the role unresolved and
+        explain the match using the supplied title and listed name instead.
+        The authors array's order or size does not establish roles or co-authorship.
+        Only describe a specific author or contributor role in the explanation when the
+        supplied catalog text explicitly supports it. You cannot fetch additional records.
         Edition subtitle, editionName, contributions and notes are catalog text about that
         specific edition. Check all requested edition features against the SAME edition.
         A requested year alone does not verify words such as illustrated or deluxe.
@@ -81,6 +99,12 @@ public static class GeminiPrompts
         Examples of decisions:
         - A precise "Harry Potter and the Chamber of Secrets" query and one matching supplied
           title: select that work, rather than five other Harry Potter books.
+        - The same precise query with a matching Rowling book and a matching title whose
+          subjects identify motion-picture music: select the Rowling book alone unless the
+          user requested music. Do not return both simply because their titles match.
+        - If supplied edition text identifies a queried person as an illustrator only, treat
+          that as a contributor match. Without explicit role information, do not claim
+          "verified primary author" in the explanation.
         - "J.K. Rolling": select up to five distinct supplied books by J. K. Rowling.
           Do not turn the query into a request for one specific Harry Potter title.
         - "a book about a dragon": use supplied subjects or titles as evidence. Do not add
