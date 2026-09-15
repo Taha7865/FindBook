@@ -26,7 +26,7 @@ public sealed class OpenLibraryApiClientTests
                 """));
         });
 
-        var books = await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms(query), CancellationToken.None);
+        var books = await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(Terms(query), CancellationToken.None);
 
         var book = Assert.Single(books);
         Assert.Equal("OL1W", book.OpenLibraryWorkId);
@@ -48,7 +48,7 @@ public sealed class OpenLibraryApiClientTests
             {"key":"OL1W","title":"Example","cover_i":-1}]}
             """)));
 
-        var book = Assert.Single(await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), default));
+        var book = Assert.Single(await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(Terms("example"), default));
 
         Assert.Empty(book.Authors);
         Assert.Empty(book.Editions);
@@ -61,7 +61,7 @@ public sealed class OpenLibraryApiClientTests
     public async Task Empty_docs_is_a_successful_empty_search()
     {
         using var http = CreateHttp((_, _) => Task.FromResult(Json("{\"docs\":[]}")));
-        Assert.Empty(await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("unknown"), default));
+        Assert.Empty(await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(Terms("unknown"), default));
     }
 
     [Theory]
@@ -74,7 +74,7 @@ public sealed class OpenLibraryApiClientTests
     {
         using var http = CreateHttp((_, _) => Task.FromResult(Json(body)));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), default));
+            new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(Terms("example"), default));
         Assert.Equal(CatalogFailure.BadResponse, error.Failure);
     }
 
@@ -88,7 +88,7 @@ public sealed class OpenLibraryApiClientTests
     {
         using var http = CreateHttp((_, _) => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), default));
+            new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(Terms("example"), default));
         Assert.Equal(failure, error.Failure);
     }
 
@@ -97,7 +97,7 @@ public sealed class OpenLibraryApiClientTests
     {
         using var http = CreateHttp((_, _) => throw new HttpRequestException("Connection failed"));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), default));
+            new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(Terms("example"), default));
         Assert.Equal(CatalogFailure.Unavailable, error.Failure);
     }
 
@@ -106,7 +106,7 @@ public sealed class OpenLibraryApiClientTests
     {
         using var http = CreateHttp((_, _) => throw new TaskCanceledException("HTTP timeout"));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), default));
+            new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(Terms("example"), default));
         Assert.Equal(CatalogFailure.Timeout, error.Failure);
     }
 
@@ -117,11 +117,11 @@ public sealed class OpenLibraryApiClientTests
         source.Cancel();
         using var http = CreateHttp((_, token) => Task.FromCanceled<HttpResponseMessage>(token));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), source.Token));
+            new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(Terms("example"), source.Token));
     }
 
     [Fact]
-    public async Task Uses_separate_title_and_author_parameters_without_treating_a_year_as_first_publication()
+    public async Task Uses_edition_year_and_features_without_filtering_first_publication()
     {
         using var http = CreateHttp((request, _) =>
         {
@@ -130,11 +130,11 @@ public sealed class OpenLibraryApiClientTests
             Assert.Equal("J. R. R. Tolkien", parameters["author"].ToString());
             Assert.False(parameters.ContainsKey("sort"));
             Assert.False(parameters.ContainsKey("first_publish_year"));
-            Assert.False(parameters.ContainsKey("q"));
+            Assert.Equal("publish_year:1937 AND \"illustrated\"", parameters["q"].ToString());
             return Task.FromResult(Json("{\"docs\":[]}"));
         });
 
-        await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(
+        await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(
             new("The Hobbit & sort=random", "J. R. R. Tolkien", [], 1937, ["illustrated"]), default);
     }
 
@@ -149,7 +149,7 @@ public sealed class OpenLibraryApiClientTests
             return Task.FromResult(Json("{\"docs\":[]}"));
         });
 
-        await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(new(null, "J. K. Rowling", [], null, []), default);
+        await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(new(null, "J. K. Rowling", [], null, []), default);
     }
 
     private static BookSearchTerms Terms(string query) => new(null, null, [query], null, []);

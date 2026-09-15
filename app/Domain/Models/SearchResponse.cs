@@ -17,4 +17,10 @@ public sealed record BookEdition(
     string EditionId,
     string Title,
     string? PublishDate,
-    string OpenLibraryUrl);
+    string OpenLibraryUrl)
+{
+    public string? Subtitle { get; init; }
+    public string? EditionName { get; init; }
+    public string[] Contributions { get; init; } = [];
+    public string? Notes { get; init; }
+}

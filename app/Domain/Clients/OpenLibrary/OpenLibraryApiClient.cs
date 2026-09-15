@@ -1,4 +1,5 @@
 using System.Net;
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -7,7 +8,7 @@ using FindBook.Domain.Models;
 
 namespace FindBook.Domain.Clients.OpenLibrary;
 
-public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory) : IOpenLibraryApiClient
+public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, IOpenLibraryApiOptions options) : IOpenLibraryApiClient
 {
     private const string Fields = "key,title,author_name,subject,readinglog_count,first_publish_year,cover_i,editions,editions.key,editions.title";
 
@@ -22,28 +23,27 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory) :
                 queryParameters.Add($"title={Uri.EscapeDataString(title)}");
             if (searchTerms.Author is { } author)
                 queryParameters.Add($"author={Uri.EscapeDataString(author)}");
+            var hasEditionRequest = searchTerms.EditionYear is not null || searchTerms.EditionKeywords.Length > 0;
+            var queryParts = new List<string>();
             if (searchTerms.Keywords.Length > 0)
-                queryParameters.Add($"q={Uri.EscapeDataString(string.Join(' ', searchTerms.Keywords))}");
+                queryParts.Add(string.Join(' ', searchTerms.Keywords));
+            if (searchTerms.EditionYear is { } year)
+                queryParts.Add($"publish_year:{year}");
+            queryParts.AddRange(searchTerms.EditionKeywords.Select(keyword =>
+                "\"" + keyword.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""));
+            if (queryParts.Count > 0)
+                queryParameters.Add($"q={Uri.EscapeDataString(string.Join(" AND ", queryParts))}");
             if (queryParameters.Count == 0)
                 return [];
             if (searchTerms.Title is null)
                 queryParameters.Add("sort=readinglog");
             var path = $"search.json?{string.Join('&', queryParameters)}&limit=20&fields={Fields}";
-            using var response = await httpClient.GetAsync(path, cancellationToken);
-
-            if (response.StatusCode == HttpStatusCode.RequestTimeout)
-                throw new CatalogException(CatalogFailure.Timeout);
-            if (response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500)
-                throw new CatalogException(CatalogFailure.Unavailable);
-
-            if (!response.IsSuccessStatusCode)
-                throw new CatalogException(CatalogFailure.BadResponse);
-
-            var body = await response.Content.ReadFromJsonAsync<OpenLibraryResponse>(cancellationToken);
+            var body = await ReadResponseAsync<OpenLibraryResponse>(httpClient, path, cancellationToken);
             if (body?.Docs is null)
                 throw new CatalogException(CatalogFailure.BadResponse);
 
             var books = new List<CatalogBook>();
+            var editionLookups = 0;
             foreach (var item in body.Docs)
             {
                 var openLibraryWorkId = ReadId(item?.Key, "works", 'W');
@@ -63,8 +63,16 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory) :
                     var editionId = ReadId(edition?.Key, "books", 'M');
                     if (editionId is not null && !string.IsNullOrWhiteSpace(edition?.Title))
                     {
-                        // Search does not supply the edition's publication date here.
-                        editions.Add(new CatalogEdition(editionId, edition.Title, null));
+                        if (!hasEditionRequest)
+                            editions.Add(new CatalogEdition(editionId, edition.Title, null));
+                        else if (editionLookups < options.MaxEditionLookups)
+                        {
+                            editionLookups++;
+                            var details = await ReadEditionAsync(httpClient, editionId, openLibraryWorkId,
+                                searchTerms.EditionYear, cancellationToken);
+                            if (details is not null)
+                                editions.Add(details);
+                        }
                     }
                 }
 
@@ -97,6 +105,58 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory) :
         {
             throw new CatalogException(CatalogFailure.BadResponse, exception);
         }
+    }
+
+    private static async Task<CatalogEdition?> ReadEditionAsync(HttpClient httpClient, string editionId,
+        string workId, int? requestedYear, CancellationToken cancellationToken)
+    {
+        var edition = await ReadResponseAsync<OpenLibraryEditionResponse>(httpClient,
+            $"books/{editionId}.json", cancellationToken);
+        if (edition is null || ReadId(edition.Key, "books", 'M') != editionId
+            || string.IsNullOrWhiteSpace(edition.Title)
+            || edition.Works?.Any(work => ReadId(work?.Key, "works", 'W') == workId) != true)
+            return null;
+
+        // The search index is a hint. Verify the year against this edition's own record.
+        if (requestedYear is { } year && !MatchesPublicationYear(edition.PublishDate, year))
+            return null;
+
+        var notes = edition.Notes.ValueKind == JsonValueKind.String ? edition.Notes.GetString()
+            : edition.Notes.ValueKind == JsonValueKind.Object
+                && edition.Notes.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString() : null;
+        return new CatalogEdition(editionId, edition.Title, edition.PublishDate)
+        {
+            Subtitle = edition.Subtitle,
+            EditionName = edition.EditionName,
+            Contributions = (edition.Contributions ?? []).OfType<string>()
+                .Where(text => !string.IsNullOrWhiteSpace(text) && text.Length <= 200).Take(10).ToArray(),
+            Notes = notes is { Length: > 1000 } ? notes[..1000] : notes
+        };
+    }
+
+    private static bool MatchesPublicationYear(string? publishDate, int requestedYear)
+    {
+        var dateText = publishDate?.Trim();
+        if (int.TryParse(dateText, NumberStyles.None, CultureInfo.InvariantCulture, out var year))
+            return year == requestedYear;
+
+        // Require an explicit year in a readable date. "2001?" is not a verified date.
+        return DateTime.TryParse(dateText, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+            && date.Year == requestedYear
+            && Regex.IsMatch(dateText!, $@"(?<![0-9]){requestedYear}(?![0-9])");
+    }
+
+    private static async Task<T?> ReadResponseAsync<T>(HttpClient httpClient, string path, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync(path, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.RequestTimeout)
+            throw new CatalogException(CatalogFailure.Timeout);
+        if (response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500)
+            throw new CatalogException(CatalogFailure.Unavailable);
+        if (!response.IsSuccessStatusCode)
+            throw new CatalogException(CatalogFailure.BadResponse);
+        return await response.Content.ReadFromJsonAsync<T>(cancellationToken);
     }
 
     private static string? ReadId(string? key, string collection, char suffix)

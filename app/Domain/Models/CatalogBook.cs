@@ -12,4 +12,10 @@ public sealed record CatalogBook(
     public int? ReadingLogCount { get; init; }
 }
 
-public sealed record CatalogEdition(string EditionId, string Title, string? PublishDate);
+public sealed record CatalogEdition(string EditionId, string Title, string? PublishDate)
+{
+    public string? Subtitle { get; init; }
+    public string? EditionName { get; init; }
+    public string[] Contributions { get; init; } = [];
+    public string? Notes { get; init; }
+}

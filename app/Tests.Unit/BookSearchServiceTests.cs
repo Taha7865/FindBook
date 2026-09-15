@@ -210,6 +210,58 @@ public sealed class BookSearchServiceTests
     private static CatalogBook Book(string id, string title, params CatalogEdition[] editions)
         => new(id, title, ["Tolkien"], null, null, editions);
 
+    [Fact]
+    public async Task Missing_edition_relaxes_edition_filters_before_the_author_fallback()
+    {
+        var calls = new List<string>();
+        var gemini = new StubGemini(calls)
+        {
+            SearchTerms = new("The Hobbit", "Tolkien", [], 1937, ["deluxe"]),
+            Selection = new([new("OL1W", "The book matches; the requested edition is unverified.")])
+        };
+        var catalog = new StubCatalog(calls, [Book("OL1W", "The Hobbit")]) { EmptyFirstSearch = true };
+
+        var response = await new BookSearchService(gemini, catalog, new BookSearchValidator())
+            .SearchAsync("tolkien hobbit deluxe 1937", default);
+
+        Assert.Equal(2, catalog.Searches.Count);
+        Assert.Equal(1937, catalog.Searches[0].EditionYear);
+        Assert.Null(catalog.Searches[1].EditionYear);
+        Assert.Empty(catalog.Searches[1].EditionKeywords);
+        Assert.Equal("The Hobbit", catalog.Searches[1].Title);
+        Assert.Equal("Tolkien", catalog.Searches[1].Author);
+        Assert.Equal("tolkien hobbit deluxe 1937", gemini.SelectionQuery);
+        Assert.Contains("unverified", Assert.Single(response.Matches).Explanation);
+    }
+
+    [Fact]
+    public async Task Returns_fetched_edition_features_in_the_public_response()
+    {
+        var calls = new List<string>();
+        var gemini = new StubGemini(calls)
+        {
+            SearchTerms = new("The Hobbit", null, [], 1937, ["illustrated"]),
+            Selection = new([new("OL1W", "The edition record lists illustrations and a 1937 publication date.")])
+        };
+        var edition = new CatalogEdition("OL1M", "The Hobbit", "1937")
+        {
+            EditionName = "Illustrated edition",
+            Subtitle = "There and Back Again",
+            Contributions = ["An Artist (Illustrator)"],
+            Notes = "With illustrations."
+        };
+
+        var response = await new BookSearchService(gemini, new StubCatalog(calls, [Book("OL1W", "The Hobbit", edition)]),
+            new BookSearchValidator()).SearchAsync("The Hobbit illustrated 1937", default);
+
+        var result = Assert.Single(Assert.Single(response.Matches).Editions);
+        Assert.Equal("1937", result.PublishDate);
+        Assert.Equal(edition.EditionName, result.EditionName);
+        Assert.Equal(edition.Subtitle, result.Subtitle);
+        Assert.Equal(edition.Contributions, result.Contributions);
+        Assert.Equal(edition.Notes, result.Notes);
+    }
+
     private sealed class StubGemini(List<string> calls) : IGeminiApiClient
     {
         public BookSearchTerms SearchTerms { get; init; } = new("The Hobbit", null, [], null, []);

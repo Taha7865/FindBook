@@ -64,8 +64,15 @@ public static class GeminiPrompts
         Keep supplied order when there is no evidence to distinguish otherwise equal books.
 
         Explanations must be supported by supplied titles, authors, subjects, or edition data.
-        The authors array does not establish primary or contributor roles. Those roles are
-        currently unavailable; do not invent them or use author position to infer them.
+        The authors array does not establish primary or contributor roles. Primary-author
+        verification is unavailable; do not infer it from author position or count.
+        A contributor role may be stated only when explicit in an edition's contributions.
+        Multiple listed names alone do not establish co-authorship.
+        Edition subtitle, editionName, contributions and notes are catalog text about that
+        specific edition. Check all requested edition features against the SAME edition.
+        A requested year alone does not verify words such as illustrated or deluxe.
+        Prefer a book with an edition whose supplied fields support the requested year and
+        features. If edition details are absent, the requested edition remains unverified.
         FirstPublishYear describes the work, not a specific edition. Claim a requested edition
         year or feature only when its supplied edition data establishes it. If unavailable,
         explain that the work is a possible match but the requested edition is unverified.

@@ -18,10 +18,16 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
             return new SearchResponse([]);
 
         var catalogResults = await openLibrary.SearchAsync(searchTerms, cancellationToken);
+        if (catalogResults.Count == 0 && (searchTerms.EditionYear is not null || searchTerms.EditionKeywords.Length > 0))
+        {
+            // Keep the requested book as a possibility when its specific edition cannot be found.
+            var workSearch = searchTerms with { EditionYear = null, EditionKeywords = [] };
+            catalogResults = await openLibrary.SearchAsync(workSearch, cancellationToken);
+        }
         if (catalogResults.Count == 0 && searchTerms.Title is not null && searchTerms.Author is not null)
         {
             // One broader catalog search supplies candidates for the author fallback.
-            var authorSearch = searchTerms with { Title = null, Keywords = [] };
+            var authorSearch = searchTerms with { Title = null, Keywords = [], EditionYear = null, EditionKeywords = [] };
             catalogResults = await openLibrary.SearchAsync(authorSearch, cancellationToken);
         }
 
@@ -49,7 +55,13 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
             var book = booksById[selection.OpenLibraryWorkId];
             var editions = book.Editions
                 .Select(edition => new BookEdition(edition.EditionId, edition.Title,
-                    edition.PublishDate, $"https://openlibrary.org/books/{edition.EditionId}"))
+                    edition.PublishDate, $"https://openlibrary.org/books/{edition.EditionId}")
+                {
+                    Subtitle = edition.Subtitle,
+                    EditionName = edition.EditionName,
+                    Contributions = edition.Contributions,
+                    Notes = edition.Notes
+                })
                 .ToArray();
 
             return new BookMatch(book.OpenLibraryWorkId, book.Title, book.Authors,

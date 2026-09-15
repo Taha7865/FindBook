@@ -4,4 +4,5 @@ public interface IOpenLibraryApiOptions
 {
     string BaseUrl { get; }
     TimeSpan TimeoutSettings { get; }
+    int MaxEditionLookups { get; }
 }
