@@ -1,6 +1,6 @@
 # FindBook
 
-A book search API built with .NET 8. Next.js will be added for the frontend.
+A book search app built with .NET 8 and Next.js.
 
 One `POST /api/books/search` request runs the search and returns the final results. Gemini extracts search terms, Open Library supplies book records, and a second Gemini call selects books and explains the matches. Search requires a Gemini API key.
 
@@ -11,11 +11,16 @@ app/
   Api/         Controllers, search service, appsettings, and DI registration
   Domain/      API clients, typed options, models, prompts, and validation
   Tests.Unit/  Unit tests with simulated API responses
+  frontend/    Next.js search page and a server route that forwards requests to .NET
 ```
 
 `BooksController` calls `BookSearchService`. The service receives `IGeminiApiClient`, `IOpenLibraryApiClient`, and `IBookSearchValidator` through constructor injection. Clients live in Domain and use named clients from `IHttpClientFactory`. `Program.cs` binds typed options to appsettings, registers clients as transient, and registers the service and validator as scoped. No AI SDK or agent framework is used.
 
 `GeminiApiException` identifies failures in AI extraction, selection, or output validation. Its `GeminiApiFailureReason` value distinguishes invalid output, unavailable service, timeout, and missing configuration. The controller maps these to HTTP error responses without exposing provider response bodies or credentials.
+
+The frontend uses TypeScript, React state, and plain CSS. Enter or the arrow button submits the text; Shift+Enter adds a line. Results keep the backend's order and show a numbered list when several books are returned. The page also handles loading, cancellation, empty results, API errors, missing covers, and expandable edition details. A single result is not automatically labeled an exact match.
+
+The Next.js server forwards `/api/books/search` to .NET. `API_BASE_URL` sets the backend address at runtime and defaults to `http://127.0.0.1:8080`. This keeps browser requests on one origin; the Gemini key stays in .NET. The forwarding route preserves JSON error statuses, passes cancellation along, and stops waiting after four minutes. It does not retry; .NET owns retries. Cancellation cannot undo a request an external provider has already processed.
 
 ## Search flow
 
@@ -63,6 +68,16 @@ curl -X POST http://localhost:8080/api/books/search \
 ```
 
 Queries must contain non-whitespace text and be at most 1,000 characters. Each match includes `openLibraryWorkId`, title, `authors[]`, first publication year, catalog link, optional cover, grouped editions, and an explanation.
+
+In a second terminal, start the frontend using Node.js 22 or later:
+
+```sh
+cd app/frontend
+npm ci
+npm run dev
+```
+
+Open http://localhost:3000. If the API uses a different port, start the frontend with `API_BASE_URL=http://127.0.0.1:8081 npm run dev`. Do not put a Gemini key in frontend environment variables.
 
 ## Configuration
 
@@ -117,6 +132,9 @@ The API is available at http://localhost:8080. Stop with `Ctrl+C`, then run `doc
 ```sh
 dotnet test --configuration Release
 dotnet publish app/Api/Api.csproj --configuration Release
+cd app/frontend
+npm run typecheck
+npm run build
 ```
 
 Tests cover the call sequence, exact-match priority and its limits, both Gemini request formats, schema and selection validation, catalog mapping, grouping, author fallback, and errors/cancellation. Shared retry tests use the real factory registration with simulated HTTP responses. They cover recovery, exhausted attempts, permanent errors, POST body replay, Retry-After, and cancellation/timeouts. The published API also recovered from simulated Gemini 503 and Open Library 429 responses; persistent Gemini failures stopped after three attempts and returned HTTP 503. Simulated responses do not measure Gemini's search accuracy. No CI workflow is configured.
@@ -127,4 +145,6 @@ A live baseline covered ten queries: the assessment examples plus Rowling, a dra
 
 After adding work-author verification and final selection rules, targeted live checks returned one Rowling work for the full Chamber of Secrets title and five Rowling books for `J.K. Rolling`. A full Hobbit title-and-author query returned multiple works with verified Tolkien links, preserving the rule for multiple equally strong matches. A release-published HTTP check confirmed the single Chamber result and blank-query validation.
 
-The Next.js frontend and local Docker execution remain to be completed. Docker is not installed on the development machine, so container startup has not been verified. A future function-calling version can reuse `OpenLibraryApiClient`; the current implementation uses explicit calls.
+Frontend checks cover the production build, TypeScript, Enter and arrow submission, Shift+Enter, result order, edition details, cancellation, reset, empty and error states, and mobile overflow. The forwarding route was checked against the real backend for 400 and 415 JSON responses. Live browser searches through Next.js, .NET, Gemini, and Open Library returned one Chamber of Secrets result and five ordered Rowling results. Production dependencies reported no known vulnerabilities in the npm audit at the time of this check.
+
+Docker is not installed on the development machine, so container startup has not been verified. A future function-calling version can reuse `OpenLibraryApiClient`; the current implementation uses explicit calls.
