@@ -6,10 +6,12 @@ namespace FindBook.Tests.Unit;
 
 public sealed class SearchInterpretationValidatorTests
 {
+    private readonly ISearchInterpretationValidator _validator = new SearchInterpretationValidator();
+
     [Fact]
     public void Corrected_values_keep_the_original_fragment()
     {
-        SearchInterpretationValidator.Validate("books by J.K. Rolling", new([new(SearchIntent.Author,
+        _validator.Validate("books by J.K. Rolling", new([new(SearchIntent.Author,
             null, new("J. K. Rowling", "J.K. Rolling"), [], null, [])]));
     }
 
@@ -19,7 +21,7 @@ public sealed class SearchInterpretationValidatorTests
         var interpretation = new SearchInterpretation([new(SearchIntent.Title,
             new("Adventures of Huckleberry Finn", "Adventures of Huckleberry Finn"), null, [], null, [])]);
 
-        Assert.Throws<ValidationException>(() => SearchInterpretationValidator.Validate("mark huckleberry", interpretation));
+        Assert.Throws<ValidationException>(() => _validator.Validate("mark huckleberry", interpretation));
     }
 
     [Fact]
@@ -28,7 +30,7 @@ public sealed class SearchInterpretationValidatorTests
         var interpretation = new SearchInterpretation([new(SearchIntent.Author,
             new("Harry Potter", null), new("J. K. Rowling", "J.K. Rolling"), [], null, [])]);
 
-        Assert.Throws<ValidationException>(() => SearchInterpretationValidator.Validate("J.K. Rolling", interpretation));
+        Assert.Throws<ValidationException>(() => _validator.Validate("J.K. Rolling", interpretation));
     }
 
     [Theory]
@@ -38,14 +40,14 @@ public sealed class SearchInterpretationValidatorTests
     {
         var hypothesis = new SearchHypothesis(SearchIntent.Title, new("1984", "1984"), null, [], null, []);
 
-        Assert.Throws<ValidationException>(() => SearchInterpretationValidator.Validate("1984",
+        Assert.Throws<ValidationException>(() => _validator.Validate("1984",
             new(Enumerable.Repeat(hypothesis, count).ToArray())));
     }
 
     [Fact]
     public void Numeric_titles_do_not_require_a_year()
     {
-        SearchInterpretationValidator.Validate("1984", new([new(SearchIntent.Title,
+        _validator.Validate("1984", new([new(SearchIntent.Title,
             new("1984", "1984"), null, [], null, [])]));
     }
 
@@ -55,7 +57,7 @@ public sealed class SearchInterpretationValidatorTests
     [InlineData(10000)]
     public void Rejects_unsupported_or_invented_years(int year)
     {
-        Assert.Throws<ValidationException>(() => SearchInterpretationValidator.Validate("The Hobbit", new([new(
+        Assert.Throws<ValidationException>(() => _validator.Validate("The Hobbit", new([new(
             SearchIntent.Title, new("The Hobbit", "The Hobbit"), null, [], year, [])])));
     }
 
@@ -79,9 +81,9 @@ public sealed class SearchInterpretationValidatorTests
         ];
 
         foreach (var hypothesis in invalid)
-            Assert.Throws<ValidationException>(() => SearchInterpretationValidator.Validate("The Hobbit", new([hypothesis])));
+            Assert.Throws<ValidationException>(() => _validator.Validate("The Hobbit", new([hypothesis])));
 
-        Assert.Throws<ValidationException>(() => SearchInterpretationValidator.Validate("The Hobbit", null!));
-        Assert.Throws<ValidationException>(() => SearchInterpretationValidator.Validate("The Hobbit", new(null!)));
+        Assert.Throws<ValidationException>(() => _validator.Validate("The Hobbit", null!));
+        Assert.Throws<ValidationException>(() => _validator.Validate("The Hobbit", new(null!)));
     }
 }

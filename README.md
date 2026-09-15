@@ -38,7 +38,9 @@ Normalization ignores case, accents, and punctuation. Near matching requires eac
 
 A unique match at level 1 or 3 returns one work; otherwise the matcher returns up to five. A requested year or edition prevents a clear-winner decision until edition evidence is available. Author roles are also pending: internal `AuthorCredits` defaults to empty and must come from fetched evidence. The public response still uses `authors[]`.
 
-The matcher has no network calls, dependencies, or AI confidence scores. Its output is repeatable for the same interpretation and ordered catalog results. AI interpretation can still vary.
+`BookMatcher` receives `ISearchInterpretationValidator` through its constructor and validates before matching. `Program.cs` registers the validator and matcher as scoped services: one instance of each per request when resolved. The matcher depends on the validator interface, so tests can supply a replacement. These registrations do not connect the matcher to the endpoint yet.
+
+Gemini will propose the intent and source fragments. The validator checks that fragments occur in the original query and that fields agree with the proposed intent. It cannot independently identify an author or distinguish a numeric title from a requested year. The matcher has no network calls or AI confidence scores. Its output is repeatable for the same interpretation and ordered catalog results. AI interpretation can still vary.
 
 ## Run locally
 

@@ -5,9 +5,9 @@ using FindBook.Domain.Models;
 
 namespace FindBook.Domain.Validators;
 
-public static class SearchInterpretationValidator
+public sealed class SearchInterpretationValidator : ISearchInterpretationValidator
 {
-    public static void Validate(string query, SearchInterpretation interpretation)
+    public void Validate(string query, SearchInterpretation interpretation)
     {
         if (string.IsNullOrWhiteSpace(query) || query.Length > 1000)
             throw new ValidationException("The query must contain 1 to 1,000 characters.");

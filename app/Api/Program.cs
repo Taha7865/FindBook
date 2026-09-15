@@ -1,4 +1,6 @@
 using FindBook.Domain.Clients.OpenLibrary;
+using FindBook.Domain.Matching;
+using FindBook.Domain.Validators;
 using FindBook.Api.Services;
 using Microsoft.Extensions.Options;
 
@@ -25,6 +27,8 @@ builder.Services.AddHttpClient(OpenLibraryApiOptions.SectionName, (services, cli
     client.DefaultRequestHeaders.UserAgent.ParseAdd("FindBook/0.1 (+https://github.com/Taha7865/FindBook)");
 });
 builder.Services.AddTransient<IOpenLibraryApiClient, OpenLibraryApiClient>();
+builder.Services.AddScoped<ISearchInterpretationValidator, SearchInterpretationValidator>();
+builder.Services.AddScoped<BookMatcher>();
 builder.Services.AddScoped<BookSearchService>();
 
 var app = builder.Build();

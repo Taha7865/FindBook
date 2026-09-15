@@ -5,12 +5,12 @@ using FindBook.Domain.Validators;
 
 namespace FindBook.Domain.Matching;
 
-public static class BookMatcher
+public sealed class BookMatcher(ISearchInterpretationValidator validator)
 {
-    public static MatchingResult Select(string query, SearchInterpretation interpretation,
+    public MatchingResult Select(string query, SearchInterpretation interpretation,
         IReadOnlyList<CatalogBook> candidates)
     {
-        SearchInterpretationValidator.Validate(query, interpretation);
+        validator.Validate(query, interpretation);
 
         var ranked = candidates.GroupBy(book => book.WorkId)
             .Select(group => new BookRanking(group.Key,

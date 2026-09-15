@@ -1,14 +1,31 @@
+using System.ComponentModel.DataAnnotations;
 using FindBook.Domain.Matching;
 using FindBook.Domain.Models;
+using FindBook.Domain.Validators;
 
 namespace FindBook.Tests.Unit;
 
 public sealed class BookMatcherTests
 {
+    private readonly BookMatcher _matcher = new(new SearchInterpretationValidator());
+
+    [Fact]
+    public void Injected_validator_receives_the_input_and_can_stop_matching()
+    {
+        var validator = new RejectingValidator();
+        var matcher = new BookMatcher(validator);
+        var interpretation = Title("The Hobbit");
+
+        Assert.Throws<ValidationException>(() => matcher.Select("The Hobbit", interpretation, []));
+
+        Assert.Equal("The Hobbit", validator.Query);
+        Assert.Same(interpretation, validator.Interpretation);
+    }
+
     [Fact]
     public void Primary_author_exact_match_wins_over_contributor_and_near_matches()
     {
-        var result = BookMatcher.Select("The Hobbit by Tolkien", Title("The Hobbit", "Tolkien"),
+        var result = _matcher.Select("The Hobbit by Tolkien", Title("The Hobbit", "Tolkien"),
         [
             Book("OL1W", "The Hobbit: illustrated", "Tolkien"),
             Book("OL2W", "The Hobbit", "Tolkien", AuthorRole.Contributor),
@@ -22,7 +39,7 @@ public sealed class BookMatcherTests
     [Fact]
     public void Contributor_exact_match_ranks_above_near_title_and_author_fallback_without_a_winner()
     {
-        var result = BookMatcher.Select("The Hobbit by Tolkien", Title("The Hobbit", "Tolkien"),
+        var result = _matcher.Select("The Hobbit by Tolkien", Title("The Hobbit", "Tolkien"),
         [
             Book("OL1W", "The Silmarillion", "Tolkien"),
             Book("OL2W", "The Hobbit: illustrated", "Tolkien"),
@@ -40,7 +57,7 @@ public sealed class BookMatcherTests
     [InlineData("Alice’s Adventures in Wonderland", "Alices Adventures in Wonderland")]
     public void Normalizes_case_accents_and_punctuation_for_a_unique_title(string query, string catalogTitle)
     {
-        var result = BookMatcher.Select(query, Title(query),
+        var result = _matcher.Select(query, Title(query),
             [Book("OL1W", "Another title"), Book("OL2W", catalogTitle)]);
 
         Assert.True(result.HasClearWinner);
@@ -50,7 +67,7 @@ public sealed class BookMatcherTests
     [Fact]
     public void Distinct_works_with_the_same_exact_title_remain_ambiguous()
     {
-        var result = BookMatcher.Select("The Raven", Title("The Raven"),
+        var result = _matcher.Select("The Raven", Title("The Raven"),
             [Book("OL1W", "The Raven", "Author One"), Book("OL2W", "The Raven", "Author Two")]);
 
         Assert.False(result.HasClearWinner);
@@ -60,7 +77,7 @@ public sealed class BookMatcherTests
     [Fact]
     public void Duplicate_records_of_one_work_do_not_create_ambiguity()
     {
-        var result = BookMatcher.Select("The Hobbit", Title("The Hobbit"),
+        var result = _matcher.Select("The Hobbit", Title("The Hobbit"),
             [Book("OL1W", "The Hobbit"), Book("OL1W", "The Hobbit")]);
 
         Assert.True(result.HasClearWinner);
@@ -73,7 +90,7 @@ public sealed class BookMatcherTests
         var interpretation = new SearchInterpretation(
             [Title("Emma").Hypotheses[0], Title("Persuasion").Hypotheses[0]]);
 
-        var result = BookMatcher.Select("Emma or Persuasion", interpretation,
+        var result = _matcher.Select("Emma or Persuasion", interpretation,
             [Book("OL1W", "Emma"), Book("OL2W", "Persuasion")]);
 
         Assert.False(result.HasClearWinner);
@@ -88,7 +105,7 @@ public sealed class BookMatcherTests
         var interpretation = new SearchInterpretation([new(SearchIntent.Title,
             new("Adventures of Huckleberry Finn", sourceText), new("Mark Twain", "mark"), [], null, [])]);
 
-        var result = BookMatcher.Select("mark huckleberry", interpretation,
+        var result = _matcher.Select("mark huckleberry", interpretation,
             [Book("OL1W", "Adventures of Huckleberry Finn", "Mark Twain", AuthorRole.Primary)]);
 
         Assert.False(result.HasClearWinner);
@@ -98,7 +115,7 @@ public sealed class BookMatcherTests
     [Fact]
     public void A_single_search_author_does_not_establish_a_primary_role()
     {
-        var result = BookMatcher.Select("The Hobbit by Tolkien", Title("The Hobbit", "Tolkien"),
+        var result = _matcher.Select("The Hobbit by Tolkien", Title("The Hobbit", "Tolkien"),
             [Book("OL1W", "The Hobbit", "Tolkien")]);
 
         Assert.False(result.HasClearWinner);
@@ -111,7 +128,7 @@ public sealed class BookMatcherTests
         var interpretation = new SearchInterpretation([new(SearchIntent.Title,
             new("The Raven", "The Raven"), new("Edgar Allan Poe", null), [], null, [])]);
 
-        var result = BookMatcher.Select("The Raven", interpretation,
+        var result = _matcher.Select("The Raven", interpretation,
         [
             Book("OL1W", "The Raven", "Edgar Allan Poe", AuthorRole.Primary),
             Book("OL2W", "The Raven", "Another Writer", AuthorRole.Primary)
@@ -127,7 +144,7 @@ public sealed class BookMatcherTests
         var interpretation = new SearchInterpretation([new(SearchIntent.Title,
             new("Adventures of Huckleberry Finn", "Adventures of Huckleberry Finn"), new("Mark Twain", "Mark"), [], null, [])]);
 
-        var result = BookMatcher.Select("Adventures of Huckleberry Finn by Mark", interpretation,
+        var result = _matcher.Select("Adventures of Huckleberry Finn by Mark", interpretation,
             [Book("OL1W", "Adventures of Huckleberry Finn", "Mark Twain", AuthorRole.Primary)]);
 
         Assert.False(result.HasClearWinner);
@@ -141,7 +158,7 @@ public sealed class BookMatcherTests
     [InlineData("Art", MatchTier.Author)]
     public void Partial_title_words_need_four_letters_to_match_a_prefix(string fragment, MatchTier expected)
     {
-        var result = BookMatcher.Select($"{fragment} by Rowling", Title(fragment, "Rowling"),
+        var result = _matcher.Select($"{fragment} by Rowling", Title(fragment, "Rowling"),
             [Book("OL1W", "Harry Potter and the Chamber of Secrets", "Rowling")]);
 
         Assert.False(result.HasClearWinner);
@@ -157,7 +174,7 @@ public sealed class BookMatcherTests
             .Concat(Enumerable.Range(1, 7).Select(id => Book($"OL{id}W", $"Book {id}", "J. K. Rowling")))
             .ToArray();
 
-        var result = BookMatcher.Select("J.K. Rolling", interpretation, books);
+        var result = _matcher.Select("J.K. Rolling", interpretation, books);
 
         Assert.False(result.HasClearWinner);
         Assert.Equal(new[] { "OL1W", "OL2W", "OL3W", "OL4W", "OL5W" },
@@ -167,7 +184,7 @@ public sealed class BookMatcherTests
     [Fact]
     public void Author_fallback_does_not_fill_remaining_places_with_unrelated_authors()
     {
-        var result = BookMatcher.Select("An unknown title by Tolkien", Title("An unknown title", "Tolkien"),
+        var result = _matcher.Select("An unknown title by Tolkien", Title("An unknown title", "Tolkien"),
             [Book("OL1W", "Unrelated book", "Other Author"), Book("OL2W", "The Hobbit", "Tolkien")]);
 
         Assert.False(result.HasClearWinner);
@@ -177,7 +194,7 @@ public sealed class BookMatcherTests
     [Fact]
     public void Author_initials_match_with_or_without_spaces_and_periods()
     {
-        var result = BookMatcher.Select("Harry Potter by JK Rowling", Title("Harry Potter", "JK Rowling"),
+        var result = _matcher.Select("Harry Potter by JK Rowling", Title("Harry Potter", "JK Rowling"),
             [Book("OL1W", "Harry Potter", "J. K. Rowling", AuthorRole.Primary)]);
 
         Assert.True(result.HasClearWinner);
@@ -187,7 +204,7 @@ public sealed class BookMatcherTests
     [Fact]
     public void An_exact_title_with_a_different_supplied_author_is_not_a_clear_winner()
     {
-        var result = BookMatcher.Select("The Hobbit by Dickens", Title("The Hobbit", "Dickens"),
+        var result = _matcher.Select("The Hobbit by Dickens", Title("The Hobbit", "Dickens"),
             [Book("OL1W", "The Hobbit", "Tolkien", AuthorRole.Primary)]);
 
         Assert.False(result.HasClearWinner);
@@ -200,7 +217,7 @@ public sealed class BookMatcherTests
         var interpretation = new SearchInterpretation([new(SearchIntent.Author,
             null, new("Dickens", "Dickens"), [], null, [])]);
 
-        var result = BookMatcher.Select("Dickens", interpretation, [Book("OL1W", "The Hobbit", "Tolkien")]);
+        var result = _matcher.Select("Dickens", interpretation, [Book("OL1W", "The Hobbit", "Tolkien")]);
 
         Assert.False(result.HasClearWinner);
         Assert.Empty(result.Candidates);
@@ -212,8 +229,8 @@ public sealed class BookMatcherTests
         var interpretation = new SearchInterpretation([new(SearchIntent.Topic, null, null, ["dragon"], null, [])]);
         var books = new[] { Book("OL3W", "Eragon"), Book("OL1W", "Fourth Wing"), Book("OL2W", "A Game of Thrones") };
 
-        var first = BookMatcher.Select("a book about a dragon", interpretation, books);
-        var second = BookMatcher.Select("a book about a dragon", interpretation, books);
+        var first = _matcher.Select("a book about a dragon", interpretation, books);
+        var second = _matcher.Select("a book about a dragon", interpretation, books);
 
         Assert.False(first.HasClearWinner);
         Assert.Equal(new[] { "OL3W", "OL1W", "OL2W" }, first.Candidates.Select(candidate => candidate.WorkId));
@@ -231,7 +248,7 @@ public sealed class BookMatcherTests
             EditionHints = illustrated ? ["illustrated"] : []
         }]);
 
-        var result = BookMatcher.Select("The Hobbit illustrated 1937", interpretation, [Book("OL1W", "The Hobbit")]);
+        var result = _matcher.Select("The Hobbit illustrated 1937", interpretation, [Book("OL1W", "The Hobbit")]);
 
         Assert.False(result.HasClearWinner);
         Assert.Single(result.Candidates);
@@ -240,7 +257,7 @@ public sealed class BookMatcherTests
     [Fact]
     public void Empty_catalog_results_remain_empty()
     {
-        var result = BookMatcher.Select("The Hobbit", Title("The Hobbit"), []);
+        var result = _matcher.Select("The Hobbit", Title("The Hobbit"), []);
 
         Assert.False(result.HasClearWinner);
         Assert.Empty(result.Candidates);
@@ -254,4 +271,17 @@ public sealed class BookMatcherTests
         {
             AuthorCredits = role == AuthorRole.Unknown ? [] : [new(author, role)]
         };
+
+    private sealed class RejectingValidator : ISearchInterpretationValidator
+    {
+        public string? Query { get; private set; }
+        public SearchInterpretation? Interpretation { get; private set; }
+
+        public void Validate(string query, SearchInterpretation interpretation)
+        {
+            Query = query;
+            Interpretation = interpretation;
+            throw new ValidationException("Interpretation rejected by the test validator.");
+        }
+    }
 }
