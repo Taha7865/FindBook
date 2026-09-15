@@ -81,7 +81,8 @@ public sealed class OpenLibraryApiClientTests
     [Theory]
     [InlineData(429, CatalogFailure.Unavailable)]
     [InlineData(503, CatalogFailure.Unavailable)]
-    [InlineData(500, CatalogFailure.BadResponse)]
+    [InlineData(500, CatalogFailure.Unavailable)]
+    [InlineData(408, CatalogFailure.Timeout)]
     [InlineData(404, CatalogFailure.BadResponse)]
     public async Task Maps_unsuccessful_catalog_status(int status, CatalogFailure failure)
     {

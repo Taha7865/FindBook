@@ -124,6 +124,7 @@ public sealed class GeminiApiClientTests
     [InlineData(403, AiFailure.NotConfigured)]
     [InlineData(429, AiFailure.Unavailable)]
     [InlineData(500, AiFailure.Unavailable)]
+    [InlineData(408, AiFailure.Timeout)]
     [InlineData(400, AiFailure.BadResponse)]
     public async Task Maps_provider_failures_without_exposing_response_bodies(int status, AiFailure failure)
     {

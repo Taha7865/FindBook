@@ -17,5 +17,6 @@
     <ProjectReference Include="../Domain/Domain.csproj" />
     <ProjectReference Include="../Api/Api.csproj" />
     <Using Include="Xunit" />
+    <None Include="../Api/appsettings.json" Link="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

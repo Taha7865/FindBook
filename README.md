@@ -67,15 +67,19 @@ Settings live in `app/Api/appsettings.json`. Options classes hold their typed re
 "GeminiApi": {
   "BaseUrl": "https://generativelanguage.googleapis.com/v1beta/",
   "TimeoutSettings": "00:00:30",
-  "Model": "gemini-2.5-flash",
+  "Model": "gemini-3.5-flash-lite",
   "ApiKey": "",
   "MaxOutputTokens": 4096
 }
 ```
 
-`OpenLibraryApi` contains `BaseUrl` (`https://openlibrary.org/`) and `TimeoutSettings` (`00:00:15`). Each timeout applies to one outbound call. Startup validates URLs, timeout bounds, and model settings. Missing credentials leave health available and cause search to return 503. No automatic AI retries are made. Cancellation is passed through each call.
+`OpenLibraryApi` contains `BaseUrl` (`https://openlibrary.org/`) and `TimeoutSettings` (`00:00:15`). Each timeout covers one outbound call, including all retry attempts and delays. Gemini has a 30-second budget per call; Open Library has 15 seconds. The complete search can contain several calls. Startup validates URLs, timeout bounds, retry options, and model settings. Missing credentials leave health available and cause search to return 503. Cancellation stops the current call and any retry wait.
 
-The default model supports structured output and has a free tier, subject to Google's quotas. Model access and limits can change. Set `GeminiApi__Model` to use another compatible Gemini model; other providers are not implemented. See Google's [model details](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash), [pricing](https://ai.google.dev/gemini-api/docs/pricing), and [structured output guide](https://ai.google.dev/gemini-api/docs/structured-output).
+`HttpClientRegistration` uses `Microsoft.Extensions.Http.Resilience` with `ConfigureHttpClientDefaults`. Every client created by `IHttpClientFactory` receives the same retry policy. There are no retry loops in individual clients. The `ExternalApiRetry` section sets two retries (three total attempts), exponential delays starting from one second, and jitter to spread simultaneous retries. A valid `Retry-After` header sets the wait instead. The client's timeout can stop the operation before all attempts are used.
+
+The policy retries HTTP 408, 429, 5xx, and network request failures. It does not retry 400/401/403/404 responses, malformed successful responses, or caller cancellation. This includes Gemini's generation POST requests: a retry can consume additional quota and produce different text. Retries cannot fix exhausted daily quotas or missing model access. Future clients that create or change external data should disable retries for unsafe methods or use an idempotency key. See [Microsoft's HTTP resilience guide](https://learn.microsoft.com/en-us/dotnet/core/resilience/http-resilience).
+
+The default is `gemini-3.5-flash-lite`, selected for its low latency and free-tier availability. Model access and limits can change. Set `GeminiApi__Model` to use another compatible Gemini model. See Google's [model details](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite), [pricing](https://ai.google.dev/gemini-api/docs/pricing), and [structured output guide](https://ai.google.dev/gemini-api/docs/structured-output).
 
 | HTTP status | Meaning |
 | --- | --- |
@@ -93,13 +97,15 @@ Install Docker with Compose and start its engine. Create an ignored `.env` file 
 
 ```dotenv
 GEMINI_API_KEY=YOUR_API_KEY
+# Optional; this is also the default.
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 ```sh
 docker compose up --build
 ```
 
-The API is available at http://localhost:8080. Stop with `Ctrl+C`, then run `docker compose down`. Local development and Docker share port 8080; run one at a time. Compose maps the key into `GeminiApi__ApiKey`. The Dockerfile builds with the SDK and runs the API as a non-root user in an ASP.NET image.
+The API is available at http://localhost:8080. Stop with `Ctrl+C`, then run `docker compose down`. Local development and Docker share port 8080; run one at a time. Compose supplies the key and optional model at runtime. The key is excluded from Git and the image build context. The Dockerfile restores locked dependencies, publishes the API and appsettings, and runs as a non-root user in an ASP.NET image. Shared retry settings are included in the image; rebuild after changing them.
 
 ## Verification and remaining work
 
@@ -108,10 +114,10 @@ dotnet test --configuration Release
 dotnet publish app/Api/Api.csproj --configuration Release
 ```
 
-Tests cover the call sequence, exact-match priority and its limits, both Gemini request formats, schema and selection validation, catalog mapping, grouping, author fallback, and errors/cancellation. Simulated responses do not measure Gemini's search accuracy. No CI workflow is configured.
+Tests cover the call sequence, exact-match priority and its limits, both Gemini request formats, schema and selection validation, catalog mapping, grouping, author fallback, and errors/cancellation. Shared retry tests use the real factory registration with simulated HTTP responses. They cover recovery, exhausted attempts, permanent errors, POST body replay, Retry-After, and cancellation/timeouts. Simulated responses do not measure Gemini's search accuracy. No CI workflow is configured.
 
-All 76 unit tests pass. The Gemini integration was also checked with a release publish and HTTP tests using local upstream fixtures. Those HTTP checks covered the complete call sequence, grouped metadata, invalid selections, empty results, missing credentials, and 502/503/504 responses. A live Open Library author search returned 20 works with subjects and reading-list counts; Gemini was simulated for that check.
+All 93 unit tests pass. The Gemini integration was also checked with a release publish and HTTP tests using local upstream fixtures. Those HTTP checks covered the complete call sequence, grouped metadata, invalid selections, empty results, missing credentials, and 502/503/504 responses. A live Open Library author search returned 20 works with subjects and reading-list counts. A live end-to-end search for "book about zombie apocalypse" returned HTTP 200 with five candidates. The assessment's full query set still needs live evaluation.
 
 Primary-author and contributor roles remain unresolved; the response uses `authors[]`, and the prompt must not invent roles. Edition publication dates are not fetched yet. The prompt must distinguish a work's first publication year from a specific edition and state when a requested edition cannot be verified. The edition list returned by search is not exhaustive.
 
-Live Gemini evaluation, edition/author-role retrieval, the Next.js frontend, and local Docker execution remain to be completed. A future function-calling version can reuse `OpenLibraryApiClient`; the current implementation uses explicit calls.
+Full live evaluation, edition/author-role retrieval, the Next.js frontend, and local Docker execution remain to be completed. Docker is not installed on the development machine, so container startup has not been verified. A future function-calling version can reuse `OpenLibraryApiClient`; the current implementation uses explicit calls.

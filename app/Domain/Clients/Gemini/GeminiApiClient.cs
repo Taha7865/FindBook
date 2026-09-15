@@ -54,6 +54,8 @@ public sealed class GeminiApiClient(IHttpClientFactory httpClientFactory, IGemin
             using var response = await httpClient.SendAsync(request, cancellationToken);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                 throw new AiException(AiFailure.NotConfigured);
+            if (response.StatusCode == HttpStatusCode.RequestTimeout)
+                throw new AiException(AiFailure.Timeout);
             if (response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500)
                 throw new AiException(AiFailure.Unavailable);
             if (!response.IsSuccessStatusCode)

@@ -8,3 +8,4 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       GeminiApi__ApiKey: ${GEMINI_API_KEY:-}
+      GeminiApi__Model: ${GEMINI_MODEL:-gemini-3.5-flash-lite}

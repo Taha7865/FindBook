@@ -2,11 +2,13 @@ using FindBook.Domain.Clients.OpenLibrary;
 using FindBook.Domain.Clients.Gemini;
 using FindBook.Domain.Validators;
 using FindBook.Api.Services;
+using FindBook.Api;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
+builder.Services.AddApiClientRetries(builder.Configuration);
 builder.Services.AddOptions<OpenLibraryApiOptions>()
     .BindConfiguration(OpenLibraryApiOptions.SectionName)
     .ValidateDataAnnotations()

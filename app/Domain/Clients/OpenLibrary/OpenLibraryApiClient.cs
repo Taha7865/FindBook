@@ -31,7 +31,9 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory) :
             var path = $"search.json?{string.Join('&', queryParameters)}&limit=20&fields={Fields}";
             using var response = await httpClient.GetAsync(path, cancellationToken);
 
-            if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
+            if (response.StatusCode == HttpStatusCode.RequestTimeout)
+                throw new CatalogException(CatalogFailure.Timeout);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500)
                 throw new CatalogException(CatalogFailure.Unavailable);
 
             if (!response.IsSuccessStatusCode)
