@@ -174,6 +174,9 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
     }
 
     // Extract a work or edition ID from an Open Library key and reject unexpected formats before using the ID.
+    // Open Library IDs ending in W identify a work: the overall book, grouping its editions under /works/.
+    // IDs ending in M identify an edition: a specific published version of that book, stored under /books/.
+    // The caller supplies W or M so this method checks for the expected record type.
     // For example, /works/OL27482W becomes OL27482W; an already bare, valid ID is also accepted.
     private static string? ReadId(string? key, string collection, char suffix)
     {
