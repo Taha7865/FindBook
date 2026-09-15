@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>FindBook.Api</RootNamespace>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <UserSecretsId>FindBook.Api</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Domain/Domain.csproj" />

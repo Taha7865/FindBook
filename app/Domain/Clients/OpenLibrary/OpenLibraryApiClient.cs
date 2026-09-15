@@ -9,15 +9,26 @@ namespace FindBook.Domain.Clients.OpenLibrary;
 
 public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory) : IOpenLibraryApiClient
 {
-    private const string Fields = "key,title,author_name,first_publish_year,cover_i,editions,editions.key,editions.title";
+    private const string Fields = "key,title,author_name,subject,readinglog_count,first_publish_year,cover_i,editions,editions.key,editions.title";
 
-    public async Task<IReadOnlyList<CatalogBook>> SearchAsync(string query, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<CatalogBook>> SearchAsync(BookSearchTerms searchTerms, CancellationToken cancellationToken)
     {
         try
         {
             using var httpClient = httpClientFactory.CreateClient(OpenLibraryApiOptions.SectionName);
             // Fetch a small candidate pool; result selection belongs to the service.
-            var path = $"search.json?q={Uri.EscapeDataString(query)}&limit=20&fields={Fields}";
+            var queryParameters = new List<string>();
+            if (searchTerms.Title is { } title)
+                queryParameters.Add($"title={Uri.EscapeDataString(title)}");
+            if (searchTerms.Author is { } author)
+                queryParameters.Add($"author={Uri.EscapeDataString(author)}");
+            if (searchTerms.Keywords.Length > 0)
+                queryParameters.Add($"q={Uri.EscapeDataString(string.Join(' ', searchTerms.Keywords))}");
+            if (queryParameters.Count == 0)
+                return [];
+            if (searchTerms.Title is null)
+                queryParameters.Add("sort=readinglog");
+            var path = $"search.json?{string.Join('&', queryParameters)}&limit=20&fields={Fields}";
             using var response = await httpClient.GetAsync(path, cancellationToken);
 
             if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
@@ -33,8 +44,8 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory) :
             var books = new List<CatalogBook>();
             foreach (var item in body.Docs)
             {
-                var workId = ReadId(item?.Key, "works", 'W');
-                if (workId is null || string.IsNullOrWhiteSpace(item?.Title))
+                var openLibraryWorkId = ReadId(item?.Key, "works", 'W');
+                if (openLibraryWorkId is null || string.IsNullOrWhiteSpace(item?.Title))
                     continue;
 
                 // TODO: Resolve primary authors and contributor roles from work/edition records.
@@ -55,9 +66,16 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory) :
                     }
                 }
 
-                books.Add(new CatalogBook(workId, item.Title, authors,
+                books.Add(new CatalogBook(openLibraryWorkId, item.Title, authors,
                     item.FirstPublishYear, item.CoverId is > 0 ? item.CoverId : null,
-                    editions.DistinctBy(edition => edition.EditionId).ToArray()));
+                    editions.DistinctBy(edition => edition.EditionId).ToArray())
+                {
+                    // Bound catalog text passed to Gemini. Subject lists can be very large.
+                    Subjects = (item.Subjects ?? []).OfType<string>()
+                        .Where(subject => !string.IsNullOrWhiteSpace(subject) && subject.Length <= 200)
+                        .Distinct(StringComparer.OrdinalIgnoreCase).Take(20).ToArray(),
+                    ReadingLogCount = item.ReadingLogCount is >= 0 ? item.ReadingLogCount : null
+                });
             }
 
             if (body.Docs.Length > 0 && books.Count == 0)

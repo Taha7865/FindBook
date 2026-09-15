@@ -22,6 +22,12 @@ internal sealed class OpenLibraryBook
     [JsonPropertyName("cover_i")]
     public int? CoverId { get; init; }
 
+    [JsonPropertyName("subject")]
+    public string?[]? Subjects { get; init; }
+
+    [JsonPropertyName("readinglog_count")]
+    public int? ReadingLogCount { get; init; }
+
     public OpenLibraryEditions? Editions { get; init; }
 }
 

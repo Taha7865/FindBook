@@ -35,5 +35,17 @@ public sealed class BooksController(BookSearchService searchService) : Controlle
 
             return Problem(statusCode: status, title: title);
         }
+        catch (AiException exception)
+        {
+            var (status, title) = exception.Failure switch
+            {
+                AiFailure.NotConfigured => (503, "The AI search service is not configured."),
+                AiFailure.Unavailable => (503, "The AI search service is unavailable. Try again later."),
+                AiFailure.Timeout => (504, "The AI search service took too long to respond. Try again."),
+                _ => (502, "The AI search service returned an unexpected response.")
+            };
+
+            return Problem(statusCode: status, title: title);
+        }
     }
 }

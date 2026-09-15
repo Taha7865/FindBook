@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using FindBook.Domain.Clients.OpenLibrary;
 using FindBook.Domain.Exceptions;
+using FindBook.Domain.Models;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace FindBook.Tests.Unit;
@@ -20,18 +21,20 @@ public sealed class OpenLibraryApiClientTests
             Assert.Equal("/search.json", request.RequestUri.AbsolutePath);
             return Task.FromResult(Json("""
                 {"docs":[{"key":"/works/OL1W","title":"Example","author_name":["A Writer"],
-                "first_publish_year":1937,"cover_i":123,
+                "first_publish_year":1937,"cover_i":123,"subject":["Dragons",null,"Dragons"],"readinglog_count":42,
                 "editions":{"docs":[{"key":"/books/OL2M","title":"Example, illustrated"}]}}]}
                 """));
         });
 
-        var books = await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(query, CancellationToken.None);
+        var books = await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms(query), CancellationToken.None);
 
         var book = Assert.Single(books);
-        Assert.Equal("OL1W", book.WorkId);
+        Assert.Equal("OL1W", book.OpenLibraryWorkId);
         Assert.Equal("A Writer", Assert.Single(book.Authors));
         Assert.Equal(1937, book.FirstPublishYear);
         Assert.Equal(123, book.CoverId);
+        Assert.Equal("Dragons", Assert.Single(book.Subjects));
+        Assert.Equal(42, book.ReadingLogCount);
         Assert.Equal("OL2M", Assert.Single(book.Editions).EditionId);
         Assert.Null(book.Editions[0].PublishDate);
     }
@@ -45,19 +48,20 @@ public sealed class OpenLibraryApiClientTests
             {"key":"OL1W","title":"Example","cover_i":-1}]}
             """)));
 
-        var book = Assert.Single(await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", default));
+        var book = Assert.Single(await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), default));
 
         Assert.Empty(book.Authors);
         Assert.Empty(book.Editions);
         Assert.Null(book.FirstPublishYear);
         Assert.Null(book.CoverId);
+        Assert.Null(book.ReadingLogCount);
     }
 
     [Fact]
     public async Task Empty_docs_is_a_successful_empty_search()
     {
         using var http = CreateHttp((_, _) => Task.FromResult(Json("{\"docs\":[]}")));
-        Assert.Empty(await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("unknown", default));
+        Assert.Empty(await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("unknown"), default));
     }
 
     [Theory]
@@ -70,7 +74,7 @@ public sealed class OpenLibraryApiClientTests
     {
         using var http = CreateHttp((_, _) => Task.FromResult(Json(body)));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", default));
+            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), default));
         Assert.Equal(CatalogFailure.BadResponse, error.Failure);
     }
 
@@ -83,7 +87,7 @@ public sealed class OpenLibraryApiClientTests
     {
         using var http = CreateHttp((_, _) => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", default));
+            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), default));
         Assert.Equal(failure, error.Failure);
     }
 
@@ -92,7 +96,7 @@ public sealed class OpenLibraryApiClientTests
     {
         using var http = CreateHttp((_, _) => throw new HttpRequestException("Connection failed"));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", default));
+            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), default));
         Assert.Equal(CatalogFailure.Unavailable, error.Failure);
     }
 
@@ -101,7 +105,7 @@ public sealed class OpenLibraryApiClientTests
     {
         using var http = CreateHttp((_, _) => throw new TaskCanceledException("HTTP timeout"));
         var error = await Assert.ThrowsAsync<CatalogException>(() =>
-            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", default));
+            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), default));
         Assert.Equal(CatalogFailure.Timeout, error.Failure);
     }
 
@@ -112,8 +116,42 @@ public sealed class OpenLibraryApiClientTests
         source.Cancel();
         using var http = CreateHttp((_, token) => Task.FromCanceled<HttpResponseMessage>(token));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync("example", source.Token));
+            new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(Terms("example"), source.Token));
     }
+
+    [Fact]
+    public async Task Uses_separate_title_and_author_parameters_without_treating_a_year_as_first_publication()
+    {
+        using var http = CreateHttp((request, _) =>
+        {
+            var parameters = QueryHelpers.ParseQuery(request.RequestUri!.Query);
+            Assert.Equal("The Hobbit & sort=random", parameters["title"].ToString());
+            Assert.Equal("J. R. R. Tolkien", parameters["author"].ToString());
+            Assert.False(parameters.ContainsKey("sort"));
+            Assert.False(parameters.ContainsKey("first_publish_year"));
+            Assert.False(parameters.ContainsKey("q"));
+            return Task.FromResult(Json("{\"docs\":[]}"));
+        });
+
+        await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(
+            new("The Hobbit & sort=random", "J. R. R. Tolkien", [], 1937, ["illustrated"]), default);
+    }
+
+    [Fact]
+    public async Task Author_search_uses_reading_list_popularity_order()
+    {
+        using var http = CreateHttp((request, _) =>
+        {
+            var parameters = QueryHelpers.ParseQuery(request.RequestUri!.Query);
+            Assert.Equal("readinglog", parameters["sort"].ToString());
+            Assert.Equal("J. K. Rowling", parameters["author"].ToString());
+            return Task.FromResult(Json("{\"docs\":[]}"));
+        });
+
+        await new OpenLibraryApiClient(new StubFactory(http)).SearchAsync(new(null, "J. K. Rowling", [], null, []), default);
+    }
+
+    private static BookSearchTerms Terms(string query) => new(null, null, [query], null, []);
 
     private static HttpClient CreateHttp(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send)
         => new(new StubHandler(send)) { BaseAddress = new Uri("https://openlibrary.org/") };

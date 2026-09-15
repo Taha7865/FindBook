@@ -1,5 +1,5 @@
 using FindBook.Domain.Clients.OpenLibrary;
-using FindBook.Domain.Matching;
+using FindBook.Domain.Clients.Gemini;
 using FindBook.Domain.Validators;
 using FindBook.Api.Services;
 using Microsoft.Extensions.Options;
@@ -27,8 +27,26 @@ builder.Services.AddHttpClient(OpenLibraryApiOptions.SectionName, (services, cli
     client.DefaultRequestHeaders.UserAgent.ParseAdd("FindBook/0.1 (+https://github.com/Taha7865/FindBook)");
 });
 builder.Services.AddTransient<IOpenLibraryApiClient, OpenLibraryApiClient>();
-builder.Services.AddScoped<ISearchInterpretationValidator, SearchInterpretationValidator>();
-builder.Services.AddScoped<BookMatcher>();
+builder.Services.AddOptions<GeminiApiOptions>()
+    .BindConfiguration(GeminiApiOptions.SectionName)
+    .ValidateDataAnnotations()
+    .Validate(options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps),
+        "GeminiApi:BaseUrl must be an absolute HTTP or HTTPS URL.")
+    .Validate(options => options.TimeoutSettings > TimeSpan.Zero
+        && options.TimeoutSettings <= TimeSpan.FromSeconds(60),
+        "GeminiApi:TimeoutSettings must be greater than zero and at most one minute.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<IGeminiApiOptions>(services =>
+    services.GetRequiredService<IOptions<GeminiApiOptions>>().Value);
+builder.Services.AddHttpClient(GeminiApiOptions.SectionName, (services, client) =>
+{
+    var options = services.GetRequiredService<IGeminiApiOptions>();
+    client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
+    client.Timeout = options.TimeoutSettings;
+});
+builder.Services.AddTransient<IGeminiApiClient, GeminiApiClient>();
+builder.Services.AddScoped<IBookSearchValidator, BookSearchValidator>();
 builder.Services.AddScoped<BookSearchService>();
 
 var app = builder.Build();

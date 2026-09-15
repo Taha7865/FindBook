@@ -1,0 +1,84 @@
+namespace FindBook.Domain.Clients.Gemini;
+
+public static class GeminiPrompts
+{
+    public const string ExtractSearchTerms = """
+        Extract useful Open Library search terms from the query in the user message.
+        Return only the JSON object required by the response schema.
+
+        Use title for a likely book title, author for an author's name, and keywords for
+        useful remaining subject or character clues. Correct likely spelling mistakes and
+        interpret partial names. Leave uncertain fields null rather than force a guess.
+        For a description or character clue, you may suggest a likely title and author.
+        These suggestions are search terms, not verified book facts.
+
+        If the user supplies only an author, leave title null. Do not choose a book by that
+        author. For broad topics, use a few useful keywords and leave title and author null.
+        Do not repeat title or author words in keywords. Avoid overly restrictive searches.
+        Put a specifically requested publication year in editionYear. A number used as a
+        title, such as 1984, is not an edition year. Put edition clues such as illustrated
+        or deluxe in editionKeywords. Use null and empty arrays for unrelated requests.
+
+        Examples:
+        Query: harry potter and the chamber of secrets
+        Output: {"title":"Harry Potter and the Chamber of Secrets","author":null,"keywords":[],"editionYear":null,"editionKeywords":[]}
+
+        Query: J.K. Rolling
+        Output: {"title":null,"author":"J. K. Rowling","keywords":[],"editionYear":null,"editionKeywords":[]}
+
+        Query: mark huckleberry
+        Output: {"title":"Adventures of Huckleberry Finn","author":"Mark Twain","keywords":[],"editionYear":null,"editionKeywords":[]}
+
+        Query: a book about a dragon
+        Output: {"title":null,"author":null,"keywords":["dragons"],"editionYear":null,"editionKeywords":[]}
+
+        Query: tolkien hobbit illustrated deluxe 1937
+        Output: {"title":"The Hobbit","author":"J. R. R. Tolkien","keywords":[],"editionYear":1937,"editionKeywords":["illustrated","deluxe"]}
+
+        Query: 1984
+        Output: {"title":"1984","author":null,"keywords":[],"editionYear":null,"editionKeywords":[]}
+        """;
+
+    public const string SelectBooks = """
+        Select the best books for the original user query using only booksFromOpenLibrary.
+        Return the supplied openLibraryWorkId and one brief explanation for each selection,
+        in best-match order. Return at most five distinct works. Return books: [] when no
+        supplied book is a plausible match. Never introduce a book that was not supplied.
+
+        Apply this matching hierarchy:
+        1. Exact or normalized title and primary author match.
+        2. Exact or normalized title and contributor-only author match, at lower priority.
+        3. Near title and matching author, as a possible match.
+        4. If the query identifies an author but no reliable title match, select books by
+           that author. For broad topics, select books whose supplied fields support the topic.
+        5. Return one book for a unique clear match; otherwise return up to five possibilities.
+
+        Ignore differences in case, punctuation and accents; consider partial names and
+        subtitle variants. A unique precise title may establish a clear match even without
+        a supplied author. Judge specificity from the ORIGINAL query: a title you infer
+        from a fragment is not a title the user explicitly supplied.
+
+        Among relevant author or topic results, prefer a higher readingLogCount. It measures
+        Open Library reading-list activity, not sales or general worldwide popularity.
+        Missing counts are unknown. Never let popularity override a stronger title/author match.
+        Keep supplied order when there is no evidence to distinguish otherwise equal books.
+
+        Explanations must be supported by supplied titles, authors, subjects, or edition data.
+        The authors array does not establish primary or contributor roles. Those roles are
+        currently unavailable; do not invent them or use author position to infer them.
+        FirstPublishYear describes the work, not a specific edition. Claim a requested edition
+        year or feature only when its supplied edition data establishes it. If unavailable,
+        explain that the work is a possible match but the requested edition is unverified.
+        Do not invent plots, characters, dates, author roles, IDs, or confidence percentages.
+
+        Examples of decisions:
+        - A precise "Harry Potter and the Chamber of Secrets" query and one matching supplied
+          title: select that work, rather than five other Harry Potter books.
+        - "J.K. Rolling": select up to five distinct supplied books by J. K. Rowling.
+          Do not turn the query into a request for one specific Harry Potter title.
+        - "a book about a dragon": use supplied subjects or titles as evidence. Do not add
+          Eragon or Fourth Wing unless that work is actually in the supplied books.
+        - "mark huckleberry": a fetched Huckleberry Finn title by Mark Twain is a plausible
+          interpretation. Do not say the user supplied its exact full title.
+        """;
+}
