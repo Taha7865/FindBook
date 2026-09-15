@@ -125,7 +125,9 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 docker compose up --build
 ```
 
-The API is available at http://localhost:8080. Stop with `Ctrl+C`, then run `docker compose down`. Local development and Docker share port 8080; run one at a time. Compose supplies the key and optional model at runtime. The key is excluded from Git and the image build context. The Dockerfile restores locked dependencies, publishes the API and appsettings, and runs as a non-root user in an ASP.NET image. Shared retry settings are included in the image; rebuild after changing them.
+Open the frontend at http://localhost:3000. The API is also available at http://localhost:8080. Stop with `Ctrl+C`, then run `docker compose down`. Local development and Docker share ports 3000 and 8080; run one at a time. Compose supplies the key and optional model only to the API at runtime. The key is excluded from Git and the image build contexts.
+
+The root Dockerfile restores locked .NET dependencies, publishes the API and appsettings, and runs as a non-root user in an ASP.NET image. `app/frontend/Dockerfile` uses Node.js 24 and `npm ci`, builds Next.js, then copies its standalone output into a separate runtime image that runs as the `node` user. The frontend build script also copies the static assets into that output. Compose sets `API_BASE_URL=http://api:8080` so the Next.js server reaches the API by its service name. No Gemini key is included in the frontend image. Rebuild after changing code or appsettings.
 
 ## Verification and remaining work
 

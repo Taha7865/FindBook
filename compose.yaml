@@ -1,6 +1,15 @@
 name: findbook
 
 services:
+  frontend:
+    build: ./app/frontend
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      API_BASE_URL: http://api:8080
+    depends_on:
+      - api
+
   api:
     build: .
     ports:
