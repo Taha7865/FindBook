@@ -19,9 +19,12 @@ app/
 
 1. `ExtractSearchTermsAsync` returns a `BookSearchTerms` object with title, author, keywords, and edition clues. Empty search terms end the request with no matches.
 2. Open Library searches separate title, author, and keyword parameters and fetches up to 20 records. If a title-and-author search is empty, one author-only search follows. Duplicate records are grouped by `openLibraryWorkId` before selection. An empty catalog result skips the second Gemini call.
-3. `SelectBooksAsync` receives the original query and fetched records. It returns up to five IDs with explanations. The service builds the response metadata from those records.
+3. `SelectBooksAsync` receives the original query and fetched records. It returns up to five IDs with explanations, which the validator checks.
+4. `PrioritizeExactMatches` in `BookSearchService` puts fetched books first when the whole query matches their title, `title by author`, or `title author`. It normalizes case, accents, punctuation, and spacing. The author must match a listed name. Exact matches get a short factual explanation and are included even if Gemini omitted them. Other selections retain Gemini's order; duplicate IDs are removed and the response stays within five books. Response metadata comes from the fetched records.
 
 The two prompts and their examples are in [GeminiPrompts.cs](app/Domain/Clients/Gemini/GeminiPrompts.cs). The selection prompt follows the assessment's title/author hierarchy and asks for one clear match or up to five possibilities. There is no custom fuzzy matcher or numeric confidence score. Prompt quality must be evaluated with live queries; schema compliance alone does not establish accuracy.
+
+The exact-match check compares the original query directly with catalog fields, not Gemini's extracted terms. Partial names, descriptive queries, and extra edition clues remain with Gemini. It applies only to retrieved books and does not verify primary authorship or a specific edition. When several books match exactly, they keep the catalog's order.
 
 `BookSearchValidator` checks field limits, required values, duplicate selections, and membership in the fetched IDs. It does not interpret the query. `Safeguard` places a short instruction in both Gemini system messages and treats user and catalog text as untrusted data. This is a basic precaution, not a guarantee against prompt injection. Output uses Gemini's JSON schema support and is validated again in C#.
 
@@ -105,9 +108,9 @@ dotnet test --configuration Release
 dotnet publish app/Api/Api.csproj --configuration Release
 ```
 
-Tests cover the call sequence, both Gemini request formats, schema and selection validation, catalog mapping, grouping, author fallback, and errors/cancellation. Simulated responses do not measure Gemini's search accuracy. No CI workflow is configured.
+Tests cover the call sequence, exact-match priority and its limits, both Gemini request formats, schema and selection validation, catalog mapping, grouping, author fallback, and errors/cancellation. Simulated responses do not measure Gemini's search accuracy. No CI workflow is configured.
 
-The release publish, 62 unit tests, and HTTP checks with local upstream fixtures passed. HTTP checks covered the complete call sequence, grouped metadata, invalid selections, empty results, missing credentials, and 502/503/504 responses. A live Open Library author search returned 20 works with subjects and reading-list counts; Gemini was simulated for that check.
+All 76 unit tests pass. The Gemini integration was also checked with a release publish and HTTP tests using local upstream fixtures. Those HTTP checks covered the complete call sequence, grouped metadata, invalid selections, empty results, missing credentials, and 502/503/504 responses. A live Open Library author search returned 20 works with subjects and reading-list counts; Gemini was simulated for that check.
 
 Primary-author and contributor roles remain unresolved; the response uses `authors[]`, and the prompt must not invent roles. Edition publication dates are not fetched yet. The prompt must distinguish a work's first publication year from a specific edition and state when a requested edition cannot be verified. The edition list returned by search is not exhaustive.
 

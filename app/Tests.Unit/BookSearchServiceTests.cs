@@ -44,6 +44,95 @@ public sealed class BookSearchServiceTests
         Assert.Null(response.Matches[0].CoverUrl);
     }
 
+    [Theory]
+    [InlineData("  THE HOBBIT!!  ", "The Hobbit", "Tolkien")]
+    [InlineData("\"The   Hobbit\"", "The Hobbit", "Tolkien")]
+    [InlineData("The Hobbit by Tolkien", "The Hobbit", "Tolkien")]
+    [InlineData("The Hobbit (Tolkien)", "The Hobbit", "Tolkien")]
+    [InlineData("les miserables", "Les Misérables", "Victor Hugo")]
+    public async Task Exact_query_match_moves_above_partial_matches_without_duplicates(string query, string title, string author)
+    {
+        var calls = new List<string>();
+        var gemini = new StubGemini(calls)
+        {
+            Selection = new([new("OL1W", "A related book."), new("OL2W", "A possible match.")])
+        };
+        var catalog = new StubCatalog(calls,
+        [
+            Book("OL1W", "A companion book"),
+            Book("OL2W", title) with { Authors = [author] }
+        ]);
+
+        var response = await new BookSearchService(gemini, catalog, new BookSearchValidator()).SearchAsync(query, default);
+
+        Assert.Equal(new[] { "OL2W", "OL1W" }, response.Matches.Select(book => book.OpenLibraryWorkId));
+        Assert.StartsWith("The query matches this book's title", response.Matches[0].Explanation);
+        Assert.Equal("A related book.", response.Matches[1].Explanation);
+        Assert.Equal(new[] { "extract", "catalog", "select" }, calls);
+    }
+
+    [Fact]
+    public async Task Exact_match_omitted_by_gemini_is_included_within_the_five_result_limit()
+    {
+        var calls = new List<string>();
+        var relatedBooks = Enumerable.Range(1, 5).Select(index => Book($"OL{index}W", $"A companion book {index}")).ToArray();
+        var gemini = new StubGemini(calls)
+        {
+            Selection = new(relatedBooks.Select(book => new SelectedBook(book.OpenLibraryWorkId, "A related book.")).ToArray())
+        };
+        var catalog = new StubCatalog(calls, [.. relatedBooks, Book("OL6W", "The Hobbit")]);
+
+        var response = await new BookSearchService(gemini, catalog, new BookSearchValidator()).SearchAsync("The Hobbit", default);
+
+        Assert.Equal(new[] { "OL6W", "OL1W", "OL2W", "OL3W", "OL4W" }, response.Matches.Select(book => book.OpenLibraryWorkId));
+        Assert.Equal("The query matches this book's title.", response.Matches[0].Explanation);
+    }
+
+    [Theory]
+    [InlineData("hobbit")]
+    [InlineData("a book about a dragon")]
+    [InlineData("The Hobbit by Someone Else")]
+    [InlineData("The Hobbit 1937 illustrated edition")]
+    [InlineData("books like The Hobbit")]
+    [InlineData("Tolkien")]
+    public async Task Partial_descriptive_author_and_edition_queries_keep_geminis_selection(string query)
+    {
+        var calls = new List<string>();
+        var gemini = new StubGemini(calls)
+        {
+            SearchTerms = new("The Hobbit", "Tolkien", [], null, []),
+            Selection = new([new("OL1W", "First possibility."), new("OL2W", "Second possibility.")])
+        };
+        var catalog = new StubCatalog(calls, [Book("OL1W", "A related book"), Book("OL2W", "The Hobbit")]);
+
+        var response = await new BookSearchService(gemini, catalog, new BookSearchValidator()).SearchAsync(query, default);
+
+        Assert.Equal(new[] { "OL1W", "OL2W" }, response.Matches.Select(book => book.OpenLibraryWorkId));
+        Assert.Equal("Second possibility.", response.Matches[1].Explanation);
+    }
+
+    [Fact]
+    public async Task Exact_match_is_returned_even_when_gemini_selects_no_books()
+    {
+        var calls = new List<string>();
+        var response = await new BookSearchService(new StubGemini(calls),
+            new StubCatalog(calls, [Book("OL1W", "The Hobbit")]), new BookSearchValidator())
+            .SearchAsync("The Hobbit", default);
+
+        Assert.Equal("OL1W", Assert.Single(response.Matches).OpenLibraryWorkId);
+    }
+
+    [Fact]
+    public async Task Invalid_ai_selection_is_still_rejected_when_an_exact_match_exists()
+    {
+        var calls = new List<string>();
+        var gemini = new StubGemini(calls) { Selection = new([new("OL999W", "Invented selection.")]) };
+
+        await Assert.ThrowsAsync<AiException>(() =>
+            new BookSearchService(gemini, new StubCatalog(calls, [Book("OL1W", "The Hobbit")]), new BookSearchValidator())
+                .SearchAsync("The Hobbit", default));
+    }
+
     [Fact]
     public async Task Empty_catalog_skips_the_second_gemini_call()
     {

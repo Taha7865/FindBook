@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.RegularExpressions;
 using FindBook.Domain.Models;
 using FindBook.Domain.Clients.Gemini;
 using FindBook.Domain.Clients.OpenLibrary;
@@ -39,6 +41,7 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
 
         var selectedBooks = await gemini.SelectBooksAsync(userQuery, booksFromOpenLibrary, cancellationToken);
         validator.ValidateSelection(selectedBooks, booksFromOpenLibrary);
+        selectedBooks = PrioritizeExactMatches(userQuery, selectedBooks, booksFromOpenLibrary);
 
         var booksById = booksFromOpenLibrary.ToDictionary(book => book.OpenLibraryWorkId);
         var matches = selectedBooks.Books.Select(selection =>
@@ -56,5 +59,37 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
         }).ToArray();
 
         return new SearchResponse(matches);
+    }
+
+    private static BookSelection PrioritizeExactMatches(string userQuery, BookSelection selectedBooks,
+        IReadOnlyList<CatalogBook> booksFromOpenLibrary)
+    {
+        var normalizedQuery = NormalizeForExactMatch(userQuery);
+        if (normalizedQuery.Length == 0)
+            return selectedBooks;
+
+        var exactMatches = new List<SelectedBook>();
+        foreach (var book in booksFromOpenLibrary)
+        {
+            // Compare the whole query: an inferred title or extra edition clues must not qualify.
+            var matchesTitle = normalizedQuery == NormalizeForExactMatch(book.Title);
+            var matchesTitleAndAuthor = book.Authors.Any(author =>
+                normalizedQuery == NormalizeForExactMatch($"{book.Title} by {author}")
+                || normalizedQuery == NormalizeForExactMatch($"{book.Title} {author}"));
+            if (matchesTitle || matchesTitleAndAuthor)
+                exactMatches.Add(new SelectedBook(book.OpenLibraryWorkId, matchesTitle
+                    ? "The query matches this book's title."
+                    // TODO: Verify primary-author roles; authors[] only establishes a listed author.
+                    : "The query matches this book's title and a listed author."));
+        }
+
+        return new BookSelection(exactMatches.Concat(selectedBooks.Books)
+            .DistinctBy(book => book.OpenLibraryWorkId).Take(5).ToArray());
+    }
+
+    private static string NormalizeForExactMatch(string value)
+    {
+        var withoutAccents = Regex.Replace(value.Normalize(NormalizationForm.FormD), @"\p{Mn}", "");
+        return Regex.Replace(withoutAccents.ToLowerInvariant(), @"[^\p{L}\p{N}]+", " ").Trim();
     }
 }
