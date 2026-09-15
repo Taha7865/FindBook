@@ -40,4 +40,7 @@ internal sealed class OpenLibraryEdition
 {
     public string? Key { get; init; }
     public string? Title { get; init; }
+
+    [JsonPropertyName("publish_date")]
+    public string?[]? PublishDates { get; init; }
 }

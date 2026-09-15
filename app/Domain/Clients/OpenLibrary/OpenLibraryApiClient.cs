@@ -10,7 +10,7 @@ namespace FindBook.Domain.Clients.OpenLibrary;
 
 public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, IOpenLibraryApiOptions options) : IOpenLibraryApiClient
 {
-    private const string Fields = "key,title,author_name,subject,readinglog_count,first_publish_year,cover_i,editions,editions.key,editions.title";
+    private const string Fields = "key,title,author_name,subject,readinglog_count,first_publish_year,cover_i,editions,editions.key,editions.title,editions.publish_date";
 
     // Search Open Library for books, fetch edition details when requested, and return the fields our app uses.
     public async Task<IReadOnlyList<CatalogBook>> SearchAsync(BookSearchTerms searchTerms, CancellationToken cancellationToken)
@@ -71,7 +71,11 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
                 if (editionId is not null && !string.IsNullOrWhiteSpace(edition?.Title))
                 {
                     if (!hasEditionRequest)
-                        editions.Add(new CatalogEdition(editionId, edition.Title, null));
+                    {
+                        // Use a date from this edition, not the work's dates, which can describe other editions.
+                        var publishDate = edition.PublishDates?.FirstOrDefault(date => !string.IsNullOrWhiteSpace(date))?.Trim();
+                        editions.Add(new CatalogEdition(editionId, edition.Title, publishDate));
+                    }
                     else if (editionLookups < options.MaxEditionLookups)
                     {
                         editionLookups++;

@@ -39,6 +39,33 @@ public sealed class OpenLibraryApiClientTests
         Assert.Null(book.Editions[0].PublishDate);
     }
 
+    [Theory]
+    [InlineData("[null,\" \",\" 1993 \",\"2001\"]", "1993")]
+    [InlineData("[\"/1993\"]", "/1993")]
+    [InlineData("[]", null)]
+    [InlineData("null", null)]
+    public async Task Uses_the_first_nonblank_date_from_the_same_edition_without_an_extra_request(string dates, string? expected)
+    {
+        var requests = 0;
+        using var http = CreateHttp((request, _) =>
+        {
+            requests++;
+            Assert.Equal("/search.json", request.RequestUri!.AbsolutePath);
+            Assert.Contains("editions.publish_date", QueryHelpers.ParseQuery(request.RequestUri.Query)["fields"].ToString());
+            return Task.FromResult(Json("""
+                {"docs":[{"key":"/works/OL1W","title":"Example","first_publish_year":1960,
+                  "publish_date":["1960","2000"],
+                  "editions":{"docs":[{"key":"/books/OL2M","title":"Example","publish_date":DATES}]}}]}
+                """.Replace("DATES", dates)));
+        });
+
+        var books = await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions())
+            .SearchAsync(new("Example", null, [], null, []), default);
+
+        Assert.Equal(expected, Assert.Single(Assert.Single(books).Editions).PublishDate);
+        Assert.Equal(1, requests);
+    }
+
     [Fact]
     public async Task Allows_missing_optional_metadata_and_skips_invalid_records()
     {
