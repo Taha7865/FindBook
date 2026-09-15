@@ -128,7 +128,7 @@ public sealed class BookSearchServiceTests
         var calls = new List<string>();
         var gemini = new StubGemini(calls) { Selection = new([new("OL999W", "Invented selection.")]) };
 
-        await Assert.ThrowsAsync<AiException>(() =>
+        await Assert.ThrowsAsync<BookSearchAiException>(() =>
             new BookSearchService(gemini, new StubCatalog(calls, [Book("OL1W", "The Hobbit")]), new BookSearchValidator())
                 .SearchAsync("The Hobbit", default));
     }
@@ -180,7 +180,7 @@ public sealed class BookSearchServiceTests
     {
         var calls = new List<string>();
         var gemini = new StubGemini(calls) { SearchTerms = new(" ", null, [], null, []) };
-        await Assert.ThrowsAsync<AiException>(() =>
+        await Assert.ThrowsAsync<BookSearchAiException>(() =>
             new BookSearchService(gemini, new StubCatalog(calls, []), new BookSearchValidator()).SearchAsync("example", default));
         Assert.Equal(new[] { "extract" }, calls);
     }
@@ -190,7 +190,7 @@ public sealed class BookSearchServiceTests
     {
         var calls = new List<string>();
         var gemini = new StubGemini(calls) { Selection = new([new("OL999W", "Invented selection.")]) };
-        await Assert.ThrowsAsync<AiException>(() =>
+        await Assert.ThrowsAsync<BookSearchAiException>(() =>
             new BookSearchService(gemini, new StubCatalog(calls, [Book("OL1W", "The Hobbit")]), new BookSearchValidator())
                 .SearchAsync("example", default));
     }
@@ -201,7 +201,7 @@ public sealed class BookSearchServiceTests
         var calls = new List<string>();
         var validator = new RejectingValidator();
         var gemini = new StubGemini(calls);
-        await Assert.ThrowsAsync<AiException>(() =>
+        await Assert.ThrowsAsync<BookSearchAiException>(() =>
             new BookSearchService(gemini, new StubCatalog(calls, []), validator).SearchAsync("example", default));
         Assert.Same(gemini.SearchTerms, validator.ReceivedTerms);
         Assert.Equal(new[] { "extract" }, calls);
@@ -259,7 +259,7 @@ public sealed class BookSearchServiceTests
         public void ValidateSearchTerms(BookSearchTerms searchTerms)
         {
             ReceivedTerms = searchTerms;
-            throw new AiException(AiFailure.BadResponse);
+            throw new BookSearchAiException(BookSearchAiFailure.BadResponse);
         }
         public void ValidateSelection(BookSelection selection, IReadOnlyList<CatalogBook> booksFromOpenLibrary)
             => throw new InvalidOperationException("Must not reach selection.");

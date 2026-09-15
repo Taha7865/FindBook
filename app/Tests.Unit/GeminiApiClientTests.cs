@@ -81,9 +81,9 @@ public sealed class GeminiApiClientTests
     [InlineData("{\"title\":null,\"author\":null,\"keywords\":[],\"editionYear\":null,\"editionKeywords\":[],\"unexpected\":true}")]
     public async Task Rejects_invalid_or_incomplete_structured_output(string output)
     {
-        var error = await Assert.ThrowsAsync<AiException>(() =>
+        var error = await Assert.ThrowsAsync<BookSearchAiException>(() =>
             CreateClient((_, _) => Task.FromResult(Output(output))).ExtractSearchTermsAsync("example", default));
-        Assert.Equal(AiFailure.BadResponse, error.Failure);
+        Assert.Equal(BookSearchAiFailure.BadResponse, error.Failure);
     }
 
     [Fact]
@@ -98,9 +98,9 @@ public sealed class GeminiApiClientTests
         ];
         foreach (var response in responses)
         {
-            var error = await Assert.ThrowsAsync<AiException>(() =>
+            var error = await Assert.ThrowsAsync<BookSearchAiException>(() =>
                 CreateClient((_, _) => Task.FromResult(Json(response))).ExtractSearchTermsAsync("example", default));
-            Assert.Equal(AiFailure.BadResponse, error.Failure);
+            Assert.Equal(BookSearchAiFailure.BadResponse, error.Failure);
         }
     }
 
@@ -120,15 +120,15 @@ public sealed class GeminiApiClientTests
     }
 
     [Theory]
-    [InlineData(401, AiFailure.NotConfigured)]
-    [InlineData(403, AiFailure.NotConfigured)]
-    [InlineData(429, AiFailure.Unavailable)]
-    [InlineData(500, AiFailure.Unavailable)]
-    [InlineData(408, AiFailure.Timeout)]
-    [InlineData(400, AiFailure.BadResponse)]
-    public async Task Maps_provider_failures_without_exposing_response_bodies(int status, AiFailure failure)
+    [InlineData(401, BookSearchAiFailure.NotConfigured)]
+    [InlineData(403, BookSearchAiFailure.NotConfigured)]
+    [InlineData(429, BookSearchAiFailure.Unavailable)]
+    [InlineData(500, BookSearchAiFailure.Unavailable)]
+    [InlineData(408, BookSearchAiFailure.Timeout)]
+    [InlineData(400, BookSearchAiFailure.BadResponse)]
+    public async Task Maps_provider_failures_without_exposing_response_bodies(int status, BookSearchAiFailure failure)
     {
-        var error = await Assert.ThrowsAsync<AiException>(() =>
+        var error = await Assert.ThrowsAsync<BookSearchAiException>(() =>
             CreateClient((_, _) => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)
             { Content = new StringContent("provider details") })).ExtractSearchTermsAsync("example", default));
         Assert.Equal(failure, error.Failure);
@@ -139,19 +139,19 @@ public sealed class GeminiApiClientTests
     public async Task Missing_key_is_reported_before_sending_a_request()
     {
         var client = CreateClient((_, _) => throw new InvalidOperationException("Must not send"), "");
-        var error = await Assert.ThrowsAsync<AiException>(() => client.ExtractSearchTermsAsync("example", default));
-        Assert.Equal(AiFailure.NotConfigured, error.Failure);
+        var error = await Assert.ThrowsAsync<BookSearchAiException>(() => client.ExtractSearchTermsAsync("example", default));
+        Assert.Equal(BookSearchAiFailure.NotConfigured, error.Failure);
     }
 
     [Fact]
     public async Task Distinguishes_network_timeout_and_caller_cancellation()
     {
-        var network = await Assert.ThrowsAsync<AiException>(() =>
+        var network = await Assert.ThrowsAsync<BookSearchAiException>(() =>
             CreateClient((_, _) => throw new HttpRequestException()).ExtractSearchTermsAsync("example", default));
-        Assert.Equal(AiFailure.Unavailable, network.Failure);
-        var timeout = await Assert.ThrowsAsync<AiException>(() =>
+        Assert.Equal(BookSearchAiFailure.Unavailable, network.Failure);
+        var timeout = await Assert.ThrowsAsync<BookSearchAiException>(() =>
             CreateClient((_, _) => throw new TaskCanceledException()).ExtractSearchTermsAsync("example", default));
-        Assert.Equal(AiFailure.Timeout, timeout.Failure);
+        Assert.Equal(BookSearchAiFailure.Timeout, timeout.Failure);
         using var source = new CancellationTokenSource();
         source.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>

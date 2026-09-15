@@ -15,6 +15,8 @@ app/
 
 `BooksController` calls `BookSearchService`. The service receives `IGeminiApiClient`, `IOpenLibraryApiClient`, and `IBookSearchValidator` through constructor injection. Clients live in Domain and use named clients from `IHttpClientFactory`. `Program.cs` binds typed options to appsettings, registers clients as transient, and registers the service and validator as scoped. No AI SDK or agent framework is used.
 
+`BookSearchAiException` identifies failures in AI extraction, selection, or output validation. Its `BookSearchAiFailure` value distinguishes invalid output, unavailable service, timeout, and missing configuration. The controller maps these to HTTP error responses without exposing provider response bodies or credentials.
+
 ## Search flow
 
 1. `ExtractSearchTermsAsync` returns a `BookSearchTerms` object with title, author, keywords, and edition clues. Empty search terms end the request with no matches.
@@ -114,7 +116,7 @@ dotnet test --configuration Release
 dotnet publish app/Api/Api.csproj --configuration Release
 ```
 
-Tests cover the call sequence, exact-match priority and its limits, both Gemini request formats, schema and selection validation, catalog mapping, grouping, author fallback, and errors/cancellation. Shared retry tests use the real factory registration with simulated HTTP responses. They cover recovery, exhausted attempts, permanent errors, POST body replay, Retry-After, and cancellation/timeouts. Simulated responses do not measure Gemini's search accuracy. No CI workflow is configured.
+Tests cover the call sequence, exact-match priority and its limits, both Gemini request formats, schema and selection validation, catalog mapping, grouping, author fallback, and errors/cancellation. Shared retry tests use the real factory registration with simulated HTTP responses. They cover recovery, exhausted attempts, permanent errors, POST body replay, Retry-After, and cancellation/timeouts. The published API also recovered from simulated Gemini 503 and Open Library 429 responses; persistent Gemini failures stopped after three attempts and returned HTTP 503. Simulated responses do not measure Gemini's search accuracy. No CI workflow is configured.
 
 All 93 unit tests pass. The Gemini integration was also checked with a release publish and HTTP tests using local upstream fixtures. Those HTTP checks covered the complete call sequence, grouped metadata, invalid selections, empty results, missing credentials, and 502/503/504 responses. A live Open Library author search returned 20 works with subjects and reading-list counts. A live end-to-end search for "book about zombie apocalypse" returned HTTP 200 with five candidates. The assessment's full query set still needs live evaluation.
 

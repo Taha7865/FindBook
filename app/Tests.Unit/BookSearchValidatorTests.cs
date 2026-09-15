@@ -31,7 +31,7 @@ public sealed class BookSearchValidatorTests
             valid with { EditionKeywords = [new string('x', 101)] }, valid with { EditionYear = 0 }
         ];
         foreach (var terms in invalid)
-            Assert.Throws<AiException>(() => _validator.ValidateSearchTerms(terms));
+            Assert.Throws<BookSearchAiException>(() => _validator.ValidateSearchTerms(terms));
     }
 
     [Theory]
@@ -40,9 +40,9 @@ public sealed class BookSearchValidatorTests
     [InlineData("https://example.com/OL1W")]
     public void Rejects_ids_that_were_not_in_the_supplied_catalog(string id)
     {
-        var error = Assert.Throws<AiException>(() =>
+        var error = Assert.Throws<BookSearchAiException>(() =>
             _validator.ValidateSelection(new([new(id, "An explanation.")]), Books));
-        Assert.Equal(AiFailure.BadResponse, error.Failure);
+        Assert.Equal(BookSearchAiFailure.BadResponse, error.Failure);
     }
 
     [Fact]
@@ -56,6 +56,6 @@ public sealed class BookSearchValidatorTests
             new([book with { Explanation = " " }]), new([book with { Explanation = new string('x', 501) }])
         ];
         foreach (var selection in invalid)
-            Assert.Throws<AiException>(() => _validator.ValidateSelection(selection, Books));
+            Assert.Throws<BookSearchAiException>(() => _validator.ValidateSelection(selection, Books));
     }
 }

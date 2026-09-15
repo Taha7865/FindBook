@@ -30,7 +30,7 @@ public sealed class GeminiApiClient(IHttpClientFactory httpClientFactory, IGemin
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(options.ApiKey))
-            throw new AiException(AiFailure.NotConfigured);
+            throw new BookSearchAiException(BookSearchAiFailure.NotConfigured);
 
         try
         {
@@ -53,33 +53,33 @@ public sealed class GeminiApiClient(IHttpClientFactory httpClientFactory, IGemin
 
             using var response = await httpClient.SendAsync(request, cancellationToken);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                throw new AiException(AiFailure.NotConfigured);
+                throw new BookSearchAiException(BookSearchAiFailure.NotConfigured);
             if (response.StatusCode == HttpStatusCode.RequestTimeout)
-                throw new AiException(AiFailure.Timeout);
+                throw new BookSearchAiException(BookSearchAiFailure.Timeout);
             if (response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500)
-                throw new AiException(AiFailure.Unavailable);
+                throw new BookSearchAiException(BookSearchAiFailure.Unavailable);
             if (!response.IsSuccessStatusCode)
-                throw new AiException(AiFailure.BadResponse);
+                throw new BookSearchAiException(BookSearchAiFailure.BadResponse);
 
             var body = await response.Content.ReadFromJsonAsync<GeminiResponse>(cancellationToken);
             if (body?.Candidates is not { Length: 1 } || body.Candidates[0] is not { FinishReason: "STOP" } candidate
                 || candidate.Content?.Parts is not { Length: > 0 } parts)
-                throw new AiException(AiFailure.BadResponse);
+                throw new BookSearchAiException(BookSearchAiFailure.BadResponse);
 
             var outputText = string.Concat(parts.Where(part => part is not null && !part.Thought).Select(part => part.Text));
-            return JsonSerializer.Deserialize<T>(outputText, OutputJson) ?? throw new AiException(AiFailure.BadResponse);
+            return JsonSerializer.Deserialize<T>(outputText, OutputJson) ?? throw new BookSearchAiException(BookSearchAiFailure.BadResponse);
         }
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new AiException(AiFailure.Timeout, exception);
+            throw new BookSearchAiException(BookSearchAiFailure.Timeout, exception);
         }
         catch (HttpRequestException exception)
         {
-            throw new AiException(AiFailure.Unavailable, exception);
+            throw new BookSearchAiException(BookSearchAiFailure.Unavailable, exception);
         }
         catch (JsonException exception)
         {
-            throw new AiException(AiFailure.BadResponse, exception);
+            throw new BookSearchAiException(BookSearchAiFailure.BadResponse, exception);
         }
     }
 }
