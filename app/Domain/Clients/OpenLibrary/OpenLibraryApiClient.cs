@@ -12,6 +12,7 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
 {
     private const string Fields = "key,title,author_name,subject,readinglog_count,first_publish_year,cover_i,editions,editions.key,editions.title";
 
+    // Search Open Library for books, fetch edition details when requested, and return the fields our app uses.
     public async Task<IReadOnlyList<CatalogBook>> SearchAsync(BookSearchTerms searchTerms, CancellationToken cancellationToken)
     {
         try
@@ -19,24 +20,32 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
             using var httpClient = httpClientFactory.CreateClient(OpenLibraryApiOptions.SectionName);
             // Fetch a small candidate pool; result selection belongs to the service.
             var queryParameters = new List<string>();
+            // Encode values so characters such as '&' stay inside the value instead of starting another URL parameter.
             if (searchTerms.Title is { } title)
                 queryParameters.Add($"title={Uri.EscapeDataString(title)}");
             if (searchTerms.Author is { } author)
                 queryParameters.Add($"author={Uri.EscapeDataString(author)}");
+            // This means the user requested a year or edition feature, not simply that the book has editions.
             var hasEditionRequest = searchTerms.EditionYear is not null || searchTerms.EditionKeywords.Length > 0;
+            // These conditions become the value of Open Library's general search parameter, q.
             var queryParts = new List<string>();
             if (searchTerms.Keywords.Length > 0)
                 queryParts.Add(string.Join(' ', searchTerms.Keywords));
             if (searchTerms.EditionYear is { } year)
                 queryParts.Add($"publish_year:{year}");
+            // Quote each edition phrase and escape embedded quotes/backslashes so they do not break that phrase.
+            // This formats Open Library search text; it is not protection against instructions sent to Gemini.
             queryParts.AddRange(searchTerms.EditionKeywords.Select(keyword =>
                 "\"" + keyword.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""));
+            // Join the search conditions first, then encode the whole q value for the URL.
             if (queryParts.Count > 0)
                 queryParameters.Add($"q={Uri.EscapeDataString(string.Join(" AND ", queryParts))}");
             if (queryParameters.Count == 0)
                 return [];
+            // Open Library's readinglog sort puts higher readinglog_count values first as a popularity signal.
             if (searchTerms.Title is null)
                 queryParameters.Add("sort=readinglog");
+            // Twenty is our candidate limit, not a reading-log count; final selection returns at most five books.
             var path = $"search.json?{string.Join('&', queryParameters)}&limit=20&fields={Fields}";
             var body = await ReadResponseAsync<OpenLibraryResponse>(httpClient, path, cancellationToken);
             if (body?.Docs is null)
@@ -107,6 +116,7 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
         }
     }
 
+    // Fetch one edition and keep it only if its ID, parent work, and any requested year match.
     private static async Task<CatalogEdition?> ReadEditionAsync(HttpClient httpClient, string editionId,
         string workId, int? requestedYear, CancellationToken cancellationToken)
     {
@@ -121,6 +131,7 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
         if (requestedYear is { } year && !MatchesPublicationYear(edition.PublishDate, year))
             return null;
 
+        // Open Library can return notes as plain text or as an object whose value contains the text.
         var notes = edition.Notes.ValueKind == JsonValueKind.String ? edition.Notes.GetString()
             : edition.Notes.ValueKind == JsonValueKind.Object
                 && edition.Notes.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.String
@@ -135,6 +146,7 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
         };
     }
 
+    // Check that the edition's date explicitly supports the requested year; uncertain dates do not qualify.
     private static bool MatchesPublicationYear(string? publishDate, int requestedYear)
     {
         var dateText = publishDate?.Trim();
@@ -147,6 +159,8 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
             && Regex.IsMatch(dateText!, $@"(?<![0-9]){requestedYear}(?![0-9])");
     }
 
+    // Send a GET request, translate failed HTTP statuses, and read the JSON into the requested response type.
+    // The configured HTTP client handles retries before a response reaches this method's status checks.
     private static async Task<T?> ReadResponseAsync<T>(HttpClient httpClient, string path, CancellationToken cancellationToken)
     {
         using var response = await httpClient.GetAsync(path, cancellationToken);
@@ -159,6 +173,8 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
         return await response.Content.ReadFromJsonAsync<T>(cancellationToken);
     }
 
+    // Extract a work or edition ID from an Open Library key and reject unexpected formats before using the ID.
+    // For example, /works/OL27482W becomes OL27482W; an already bare, valid ID is also accepted.
     private static string? ReadId(string? key, string collection, char suffix)
     {
         if (key is null) return null;
