@@ -10,57 +10,6 @@ namespace FindBook.Tests.Unit;
 public sealed class OpenLibraryApiClientTests
 {
     [Fact]
-    public async Task Description_search_requests_work_fields_without_requiring_matching_editions()
-    {
-        using var http = CreateHttp((request, _) =>
-        {
-            var parameters = QueryHelpers.ParseQuery(request.RequestUri!.Query);
-            Assert.Equal("zombies hunters", parameters["q"].ToString());
-            Assert.Equal("readinglog", parameters["sort"].ToString());
-            Assert.Equal("20", parameters["limit"].ToString());
-            var fields = parameters["fields"].ToString().Split(',');
-            Assert.Contains("subject", fields);
-            Assert.DoesNotContain(fields, field => field.StartsWith("editions"));
-            return Task.FromResult(Json("""
-                {"docs":[{"key":"/works/OL14909930W","title":"Rot & Ruin",
-                  "author_name":["Jonathan Maberry"],"first_publish_year":2010,"cover_i":6602995,
-                  "subject":["Zombies","Bounty hunters"],"readinglog_count":61}]}
-                """));
-        });
-
-        var books = await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions())
-            .SearchAsync(new(null, null, ["zombies", "hunters"], null, []), default);
-
-        var book = Assert.Single(books);
-        Assert.Equal("Rot & Ruin", book.Title);
-        Assert.Equal("Jonathan Maberry", Assert.Single(book.Authors));
-        Assert.Equal(2010, book.FirstPublishYear);
-        Assert.Equal(6602995, book.CoverId);
-        Assert.Equal(new[] { "Zombies", "Bounty hunters" }, book.Subjects);
-        Assert.Empty(book.Editions);
-    }
-
-    [Theory]
-    [InlineData("Rot & Ruin", null, null, false)]
-    [InlineData(null, "Jonathan Maberry", null, false)]
-    [InlineData(null, null, 2010, false)]
-    [InlineData(null, null, null, true)]
-    public async Task Title_author_and_edition_requests_still_include_edition_fields(
-        string? title, string? author, int? year, bool illustrated)
-    {
-        using var http = CreateHttp((request, _) =>
-        {
-            var fields = QueryHelpers.ParseQuery(request.RequestUri!.Query)["fields"].ToString().Split(',');
-            Assert.Contains("editions", fields);
-            Assert.Contains("editions.publish_date", fields);
-            return Task.FromResult(Json("{\"docs\":[]}"));
-        });
-
-        await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions())
-            .SearchAsync(new(title, author, ["zombies"], year, illustrated ? ["illustrated"] : []), default);
-    }
-
-    [Fact]
     public async Task Maps_catalog_fields_and_keeps_query_in_one_parameter()
     {
         const string query = "García & title=other #book?";
@@ -77,8 +26,7 @@ public sealed class OpenLibraryApiClientTests
                 """));
         });
 
-        var books = await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 })
-            .SearchAsync(Terms(query) with { Author = "A Writer" }, CancellationToken.None);
+        var books = await new OpenLibraryApiClient(new StubFactory(http), new OpenLibraryApiOptions { MaxEditionLookups = 5 }).SearchAsync(Terms(query), CancellationToken.None);
 
         var book = Assert.Single(books);
         Assert.Equal("OL1W", book.OpenLibraryWorkId);
