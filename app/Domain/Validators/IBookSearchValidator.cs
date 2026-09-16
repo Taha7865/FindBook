@@ -4,6 +4,6 @@ namespace FindBook.Domain.Validators;
 
 public interface IBookSearchValidator
 {
-    void ValidateSearchTerms(BookSearchTerms searchTerms);
+    void ValidateSearchSuggestions(BookSearchSuggestions suggestions);
     void ValidateSelection(BookSelection selection, IReadOnlyList<CatalogBook> booksFromOpenLibrary);
 }

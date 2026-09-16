@@ -12,11 +12,23 @@ public sealed class BookSearchValidatorTests
     [Fact]
     public void Accepts_search_terms_and_an_empty_selection_without_deciding_their_meaning()
     {
-        _validator.ValidateSearchTerms(new("1984", null, [], null, []));
-        _validator.ValidateSearchTerms(new(null, "J. K. Rowling", [], null, []));
-        _validator.ValidateSearchTerms(new(null, null, [], null, []));
+        _validator.ValidateSearchSuggestions(new([new("1984", null, [], null, [])]));
+        _validator.ValidateSearchSuggestions(new([new(null, "J. K. Rowling", [], null, [])]));
+        _validator.ValidateSearchSuggestions(new([]));
         _validator.ValidateSelection(new([]), Books);
         _validator.ValidateSelection(new([new("OL1W", "The title matches the query.")]), Books);
+    }
+
+    [Fact]
+    public void Limits_suggestions_to_three_and_validates_fields_in_every_search()
+    {
+        var first = new BookSearchTerms(null, null, ["zombies", "hunters"], null, []);
+        var second = first with { Keywords = ["zombies", "cards"] };
+        var third = first with { Title = "Rot & Ruin", Author = "Jonathan Maberry", Keywords = [] };
+        _validator.ValidateSearchSuggestions(new([first, second, third]));
+        Assert.Throws<GeminiApiException>(() => _validator.ValidateSearchSuggestions(new([first, second, third, first])));
+        Assert.Throws<GeminiApiException>(() => _validator.ValidateSearchSuggestions(new([first, second, third with { Title = " " }])));
+        Assert.Throws<GeminiApiException>(() => _validator.ValidateSearchSuggestions(new(null!)));
     }
 
     [Fact]
@@ -31,7 +43,7 @@ public sealed class BookSearchValidatorTests
             valid with { EditionKeywords = [new string('x', 101)] }, valid with { EditionYear = 0 }
         ];
         foreach (var terms in invalid)
-            Assert.Throws<GeminiApiException>(() => _validator.ValidateSearchTerms(terms));
+            Assert.Throws<GeminiApiException>(() => _validator.ValidateSearchSuggestions(new([terms])));
     }
 
     [Theory]

@@ -12,7 +12,7 @@ public sealed class GeminiApiClientTests
 {
     private const string TestKey = "test-key-not-a-real-credential";
     private const string SearchTermsJson = """
-        {"title":null,"author":"J. K. Rowling","keywords":[],"editionYear":null,"editionKeywords":[]}
+        {"searches":[{"title":null,"author":"J. K. Rowling","keywords":[],"editionYear":null,"editionKeywords":[]}]}
         """;
 
     [Fact]
@@ -38,15 +38,43 @@ public sealed class GeminiApiClientTests
             Assert.Equal(query, userMessage.RootElement.GetProperty("query").GetString());
             var generation = root.GetProperty("generationConfig");
             Assert.Equal("application/json", generation.GetProperty("responseMimeType").GetString());
-            Assert.True(generation.GetProperty("responseJsonSchema").GetProperty("properties").TryGetProperty("author", out _));
+            var searches = generation.GetProperty("responseJsonSchema").GetProperty("properties").GetProperty("searches");
+            Assert.Equal(3, searches.GetProperty("maxItems").GetInt32());
+            Assert.True(searches.GetProperty("items").GetProperty("properties").TryGetProperty("author", out _));
             Assert.False(root.TryGetProperty("tools", out _));
             return Output(SearchTermsJson);
         });
 
-        var terms = await client.ExtractSearchTermsAsync(query, default);
+        var suggestions = await client.ExtractSearchTermsAsync(query, default);
+        var terms = Assert.Single(suggestions.Searches);
 
         Assert.Equal("J. K. Rowling", terms.Author);
         Assert.Null(terms.Title);
+    }
+
+    [Fact]
+    public async Task Reads_multiple_sets_of_search_fields_from_one_gemini_response()
+    {
+        var requests = 0;
+        var client = CreateClient((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(Output("""
+                {"searches":[
+                  {"title":null,"author":null,"keywords":["zombies","hunters"],"editionYear":2010,"editionKeywords":[]},
+                  {"title":"Rot & Ruin","author":"Jonathan Maberry","keywords":[],"editionYear":2010,"editionKeywords":[]}
+                ]}
+                """));
+        });
+
+        var suggestions = await client.ExtractSearchTermsAsync("zombie hunters published in 2010", default);
+
+        Assert.Equal(1, requests);
+        Assert.Equal(2, suggestions.Searches.Length);
+        Assert.Equal(new[] { "zombies", "hunters" }, suggestions.Searches[0].Keywords);
+        Assert.Equal("Rot & Ruin", suggestions.Searches[1].Title);
+        Assert.Equal("Jonathan Maberry", suggestions.Searches[1].Author);
+        Assert.All(suggestions.Searches, search => Assert.Equal(2010, search.EditionYear));
     }
 
     [Fact]
@@ -78,7 +106,8 @@ public sealed class GeminiApiClientTests
     [InlineData("not json")]
     [InlineData("null")]
     [InlineData("{}")]
-    [InlineData("{\"title\":null,\"author\":null,\"keywords\":[],\"editionYear\":null,\"editionKeywords\":[],\"unexpected\":true}")]
+    [InlineData("{\"searches\":[],\"unexpected\":true}")]
+    [InlineData("{\"searches\":[{\"title\":null,\"author\":null}]}")]
     public async Task Rejects_invalid_or_incomplete_structured_output(string output)
     {
         var error = await Assert.ThrowsAsync<GeminiApiException>(() =>
@@ -116,7 +145,7 @@ public sealed class GeminiApiClientTests
             } } } }
         });
         var terms = await CreateClient((_, _) => Task.FromResult(Json(response))).ExtractSearchTermsAsync("example", default);
-        Assert.Equal("J. K. Rowling", terms.Author);
+        Assert.Equal("J. K. Rowling", Assert.Single(terms.Searches).Author);
     }
 
     [Theory]

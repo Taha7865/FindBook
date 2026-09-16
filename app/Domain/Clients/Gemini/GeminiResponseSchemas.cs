@@ -1,20 +1,31 @@
 using System.Text.Json;
+using FindBook.Domain.Models;
 
 namespace FindBook.Domain.Clients.Gemini;
 
 internal static class GeminiResponseSchemas
 {
-    public static readonly JsonElement SearchTerms = JsonSerializer.Deserialize<JsonElement>("""
+    public static readonly JsonElement SearchTerms = JsonSerializer.Deserialize<JsonElement>($$"""
         {
           "type": "object",
           "properties": {
-            "title": { "type": ["string", "null"] },
-            "author": { "type": ["string", "null"] },
-            "keywords": { "type": "array", "items": { "type": "string" }, "maxItems": 8 },
-            "editionYear": { "type": ["integer", "null"], "minimum": 1, "maximum": 9999 },
-            "editionKeywords": { "type": "array", "items": { "type": "string" }, "maxItems": 5 }
+            "searches": {
+              "type": "array", "maxItems": {{BookSearchSuggestions.MaximumSearches}},
+              "items": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": ["string", "null"] },
+                  "author": { "type": ["string", "null"] },
+                  "keywords": { "type": "array", "items": { "type": "string" }, "maxItems": 8 },
+                  "editionYear": { "type": ["integer", "null"], "minimum": 1, "maximum": 9999 },
+                  "editionKeywords": { "type": "array", "items": { "type": "string" }, "maxItems": 5 }
+                },
+                "required": ["title", "author", "keywords", "editionYear", "editionKeywords"],
+                "additionalProperties": false
+              }
+            }
           },
-          "required": ["title", "author", "keywords", "editionYear", "editionKeywords"],
+          "required": ["searches"],
           "additionalProperties": false
         }
         """);

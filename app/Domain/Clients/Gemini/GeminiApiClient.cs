@@ -15,8 +15,8 @@ public sealed class GeminiApiClient(IHttpClientFactory httpClientFactory, IGemin
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
 
-    public Task<BookSearchTerms> ExtractSearchTermsAsync(string userQuery, CancellationToken cancellationToken)
-        => GenerateAsync<BookSearchTerms>(GeminiPrompts.ExtractSearchTerms, Safeguard.CreateUserMessage(userQuery),
+    public Task<BookSearchSuggestions> ExtractSearchTermsAsync(string userQuery, CancellationToken cancellationToken)
+        => GenerateAsync<BookSearchSuggestions>(GeminiPrompts.ExtractSearchTerms, Safeguard.CreateUserMessage(userQuery),
             GeminiResponseSchemas.SearchTerms, cancellationToken);
 
     public Task<BookSelection> SelectBooksAsync(string userQuery, IReadOnlyList<CatalogBook> booksFromOpenLibrary,

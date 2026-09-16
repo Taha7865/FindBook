@@ -56,8 +56,9 @@ public sealed class BooksControllerTests
 
     private sealed class StubGemini(GeminiApiFailureReason? failure = null) : IGeminiApiClient
     {
-        public Task<BookSearchTerms> ExtractSearchTermsAsync(string userQuery, CancellationToken cancellationToken)
-            => failure is { } error ? throw new GeminiApiException(error) : Task.FromResult(new BookSearchTerms("Example", null, [], null, []));
+        public Task<BookSearchSuggestions> ExtractSearchTermsAsync(string userQuery, CancellationToken cancellationToken)
+            => failure is { } error ? throw new GeminiApiException(error)
+                : Task.FromResult(new BookSearchSuggestions([new("Example", null, [], null, [])]));
         public Task<BookSelection> SelectBooksAsync(string userQuery, IReadOnlyList<CatalogBook> booksFromOpenLibrary,
             CancellationToken cancellationToken) => throw new InvalidOperationException("Must not reach selection.");
     }

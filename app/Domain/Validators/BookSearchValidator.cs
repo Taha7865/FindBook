@@ -5,12 +5,18 @@ namespace FindBook.Domain.Validators;
 
 public sealed class BookSearchValidator : IBookSearchValidator
 {
-    public void ValidateSearchTerms(BookSearchTerms searchTerms)
+    public void ValidateSearchSuggestions(BookSearchSuggestions suggestions)
     {
-        if (searchTerms is null || !IsOptionalText(searchTerms.Title) || !IsOptionalText(searchTerms.Author)
-            || !IsTextList(searchTerms.Keywords, 8) || !IsTextList(searchTerms.EditionKeywords, 5)
-            || searchTerms.EditionYear is < 1 or > 9999)
+        if (suggestions?.Searches is null || suggestions.Searches.Length > BookSearchSuggestions.MaximumSearches)
             throw new GeminiApiException(GeminiApiFailureReason.BadResponse);
+
+        foreach (var searchTerms in suggestions.Searches)
+        {
+            if (searchTerms is null || !IsOptionalText(searchTerms.Title) || !IsOptionalText(searchTerms.Author)
+                || !IsTextList(searchTerms.Keywords, 8) || !IsTextList(searchTerms.EditionKeywords, 5)
+                || searchTerms.EditionYear is < 1 or > 9999)
+                throw new GeminiApiException(GeminiApiFailureReason.BadResponse);
+        }
     }
 
     public void ValidateSelection(BookSelection selection, IReadOnlyList<CatalogBook> booksFromOpenLibrary)
