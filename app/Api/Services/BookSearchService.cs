@@ -25,31 +25,43 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
             var workSearch = searchTerms with { EditionYear = null, EditionKeywords = [] };
             catalogResults = await openLibrary.SearchAsync(workSearch, cancellationToken);
         }
+        var selectionSearchTerms = searchTerms;
+        var usedAuthorFallback = false;
         if (catalogResults.Count == 0 && searchTerms.Title is not null && searchTerms.Author is not null)
         {
-            // One broader catalog search supplies candidates for the author fallback.
-            var authorSearch = searchTerms with { Title = null, Keywords = [], EditionYear = null, EditionKeywords = [] };
-            catalogResults = await openLibrary.SearchAsync(authorSearch, cancellationToken);
+            // Open Library found no records. Try the author's other books once.
+            selectionSearchTerms = searchTerms with { Title = null, Keywords = [], EditionYear = null, EditionKeywords = [] };
+            catalogResults = await openLibrary.SearchAsync(selectionSearchTerms, cancellationToken);
+            usedAuthorFallback = true;
         }
 
-        var booksFromOpenLibrary = catalogResults.GroupBy(book => book.OpenLibraryWorkId).Select(group =>
-        {
-            var book = group.First();
-            return book with
-            {
-                Authors = group.SelectMany(item => item.Authors).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                Editions = group.SelectMany(item => item.Editions).DistinctBy(edition => edition.EditionId).ToArray(),
-                Subjects = group.SelectMany(item => item.Subjects).Distinct(StringComparer.OrdinalIgnoreCase).Take(20).ToArray(),
-                ReadingLogCount = group.Max(item => item.ReadingLogCount)
-            };
-        }).ToArray();
+        var booksFromOpenLibrary = GroupWorks(catalogResults);
         if (booksFromOpenLibrary.Length == 0)
             return new SearchResponse([]);
 
-        booksFromOpenLibrary = await VerifyWorkAuthorsAsync(userQuery, searchTerms, booksFromOpenLibrary, cancellationToken);
+        var authorsById = new Dictionary<string, CatalogAuthor?>();
+        booksFromOpenLibrary = await VerifyWorkAuthorsAsync(userQuery, selectionSearchTerms, booksFromOpenLibrary,
+            authorsById, cancellationToken);
         var selectedBooks = await gemini.SelectBooksAsync(userQuery, booksFromOpenLibrary, cancellationToken);
         validator.ValidateSelection(selectedBooks, booksFromOpenLibrary);
-        selectedBooks = SelectFinalMatches(userQuery, searchTerms, selectedBooks, booksFromOpenLibrary);
+
+        if (selectedBooks.Books.Length == 0 && !usedAuthorFallback
+            && searchTerms.Title is not null && searchTerms.Author is not null)
+        {
+            // Records existed, but Gemini accepted none. Fetch a new author-only pool instead of reviving rejected books.
+            selectionSearchTerms = searchTerms with { Title = null, Keywords = [], EditionYear = null, EditionKeywords = [] };
+            catalogResults = await openLibrary.SearchAsync(selectionSearchTerms, cancellationToken);
+            booksFromOpenLibrary = GroupWorks(catalogResults);
+            if (booksFromOpenLibrary.Length == 0)
+                return new SearchResponse([]);
+
+            booksFromOpenLibrary = await VerifyWorkAuthorsAsync(userQuery, selectionSearchTerms, booksFromOpenLibrary,
+                authorsById, cancellationToken);
+            selectedBooks = await gemini.SelectBooksAsync(userQuery, booksFromOpenLibrary, cancellationToken);
+            validator.ValidateSelection(selectedBooks, booksFromOpenLibrary);
+        }
+
+        selectedBooks = PrioritizeAcceptedBooks(userQuery, selectionSearchTerms, selectedBooks, booksFromOpenLibrary);
 
         var booksById = booksFromOpenLibrary.ToDictionary(book => book.OpenLibraryWorkId);
         var matches = selectedBooks.Books.Select(selection =>
@@ -79,10 +91,24 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
         return new SearchResponse(matches);
     }
 
-    // Check up to five likely candidates. Reuse author records within this request and cap new author lookups at ten.
+    // Combine editions and metadata for the same work before asking Gemini to select books.
+    private static CatalogBook[] GroupWorks(IReadOnlyList<CatalogBook> catalogResults)
+        => catalogResults.GroupBy(book => book.OpenLibraryWorkId).Select(group =>
+        {
+            var book = group.First();
+            return book with
+            {
+                Authors = group.SelectMany(item => item.Authors).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                Editions = group.SelectMany(item => item.Editions).DistinctBy(edition => edition.EditionId).ToArray(),
+                Subjects = group.SelectMany(item => item.Subjects).Distinct(StringComparer.OrdinalIgnoreCase).Take(20).ToArray(),
+                ReadingLogCount = group.Max(item => item.ReadingLogCount)
+            };
+        }).ToArray();
+
+    // Check up to five likely candidates per selection round. Share up to ten author lookups across the whole request.
     // These limits keep verification small; unchecked or missing records remain unverified.
     private async Task<CatalogBook[]> VerifyWorkAuthorsAsync(string userQuery, BookSearchTerms searchTerms,
-        CatalogBook[] books, CancellationToken cancellationToken)
+        CatalogBook[] books, Dictionary<string, CatalogAuthor?> authorsById, CancellationToken cancellationToken)
     {
         var normalizedQuery = NormalizeForExactMatch(userQuery);
         var normalizedTitle = NormalizeForExactMatch(searchTerms.Title ?? "");
@@ -91,8 +117,6 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
                 || QueryMatchesTitleAndAuthor(normalizedQuery, item.Book.Title, item.Book.Authors))
             .ThenByDescending(item => NormalizeForExactMatch(item.Book.Title) == normalizedTitle)
             .Take(5);
-        var authorsById = new Dictionary<string, CatalogAuthor?>();
-
         try
         {
             foreach (var candidate in candidates)
@@ -105,6 +129,8 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
                     if (!authorsById.TryGetValue(authorId, out var author))
                     {
                         if (authorsById.Count >= 10) continue;
+                        // Count failed lookups too; the fallback should not repeat them or exceed this limit.
+                        authorsById[authorId] = null;
                         author = await openLibrary.GetAuthorAsync(authorId, cancellationToken);
                         authorsById[authorId] = author;
                     }
@@ -116,19 +142,23 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
         catch (CatalogException)
         {
             // Search results are still usable if optional author verification fails. Do not guess missing roles.
-            // Stop further detail requests for this search; caller cancellation is not caught here.
+            // Stop further detail requests for this round; caller cancellation is not caught here.
         }
         return books;
     }
 
-    // Return a unique strongest match alone. Otherwise keep up to five equally strong candidates.
-    private static BookSelection SelectFinalMatches(string userQuery, BookSearchTerms searchTerms, BookSelection selectedBooks,
+    // Apply exact-match and popularity preferences only to books Gemini accepted. Keep Gemini's explanations.
+    private static BookSelection PrioritizeAcceptedBooks(string userQuery, BookSearchTerms searchTerms, BookSelection selectedBooks,
         IReadOnlyList<CatalogBook> booksFromOpenLibrary)
     {
+        if (selectedBooks.Books.Length == 0) return selectedBooks;
+        var booksById = booksFromOpenLibrary.ToDictionary(book => book.OpenLibraryWorkId);
+        var selectionsById = selectedBooks.Books.ToDictionary(book => book.OpenLibraryWorkId);
+        var acceptedBooks = selectedBooks.Books.Select(book => booksById[book.OpenLibraryWorkId]).ToArray();
+
         // An author request is a list of books, not a request to choose one title.
         if (searchTerms.Title is null && searchTerms.Author is not null)
         {
-            var booksById = booksFromOpenLibrary.ToDictionary(book => book.OpenLibraryWorkId);
             return new BookSelection(selectedBooks.Books
                 .OrderByDescending(book => booksById[book.OpenLibraryWorkId].ReadingLogCount).Take(5).ToArray());
         }
@@ -138,33 +168,30 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
             return selectedBooks;
 
         // Only names resolved through the work's author links can establish this stronger match.
-        var titleAndAuthorMatches = booksFromOpenLibrary.Where(book => QueryMatchesTitleAndAuthor(
+        var titleAndAuthorMatches = acceptedBooks.Where(book => QueryMatchesTitleAndAuthor(
             normalizedQuery, book.Title, book.WorkAuthors.SelectMany(author => author.AlternateNames.Prepend(author.Name))))
             .OrderByDescending(book => book.ReadingLogCount).ToArray();
         if (titleAndAuthorMatches.Length > 0)
         {
-            return new BookSelection(titleAndAuthorMatches.Take(5).Select(book => new SelectedBook(
-                book.OpenLibraryWorkId, "The query matches this book's title and an author listed on its Open Library work record.")).ToArray());
+            return new BookSelection(titleAndAuthorMatches.Take(5).Select(book => selectionsById[book.OpenLibraryWorkId]).ToArray());
         }
 
         // Compare the whole original query, not a title Gemini inferred from partial words or edition clues.
-        var titleMatches = booksFromOpenLibrary.Where(book => normalizedQuery == NormalizeForExactMatch(book.Title))
+        var titleMatches = acceptedBooks.Where(book => normalizedQuery == NormalizeForExactMatch(book.Title))
             .OrderByDescending(book => book.ReadingLogCount).ToArray();
         if (titleMatches.Length == 0) return selectedBooks;
         if (titleMatches.Length == 1)
-            return new BookSelection([new(titleMatches[0].OpenLibraryWorkId, "The query matches this book's title.")]);
+            return new BookSelection([selectionsById[titleMatches[0].OpenLibraryWorkId]]);
 
         // Prefer a uniquely highest reported count. Missing counts stay unknown and do not veto this preference.
         // Zero activity or tied leaders do not distinguish a winner. Popularity is not proof of identity.
         if (titleMatches[0].ReadingLogCount is > 0
             && titleMatches.Skip(1).All(book => book.ReadingLogCount != titleMatches[0].ReadingLogCount))
         {
-            return new BookSelection([new(titleMatches[0].OpenLibraryWorkId,
-                "The title matches. Among the exact-title results, this work has the highest reported Open Library reading-list count.")]);
+            return new BookSelection([selectionsById[titleMatches[0].OpenLibraryWorkId]]);
         }
 
-        return new BookSelection(titleMatches.Take(5).Select(book => new SelectedBook(book.OpenLibraryWorkId,
-            "The title matches, but the available details do not distinguish a single book.")).ToArray());
+        return new BookSelection(titleMatches.Take(5).Select(book => selectionsById[book.OpenLibraryWorkId]).ToArray());
     }
 
     // Compare a full title plus a fetched author name or alias, allowing case, accent, and punctuation differences.
