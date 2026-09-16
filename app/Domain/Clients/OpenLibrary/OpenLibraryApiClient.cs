@@ -10,7 +10,7 @@ namespace FindBook.Domain.Clients.OpenLibrary;
 
 public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, IOpenLibraryApiOptions options) : IOpenLibraryApiClient
 {
-    private const string Fields = "key,title,author_name,subject,readinglog_count,first_publish_year,cover_i,editions,editions.key,editions.title,editions.publish_date";
+    private const string WorkFields = "key,title,author_name,subject,readinglog_count,first_publish_year,cover_i";
 
     // Search Open Library for books, fetch edition details when requested, and return the fields our app uses.
     public async Task<IReadOnlyList<CatalogBook>> SearchAsync(BookSearchTerms searchTerms, CancellationToken cancellationToken)
@@ -43,8 +43,13 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
         // Open Library's readinglog sort puts higher readinglog_count values first as a popularity signal.
         if (searchTerms.Title is null)
             queryParameters.Add("sort=readinglog");
+        // Nested editions can exclude works whose subjects matched the keywords. Keep description-only
+        // searches at work level; request editions when searching for a title, author, or edition feature.
+        var fields = hasEditionRequest || searchTerms.Title is not null || searchTerms.Author is not null
+            ? WorkFields + ",editions,editions.key,editions.title,editions.publish_date"
+            : WorkFields;
         // Twenty is our candidate limit, not a reading-log count; final selection returns at most five books.
-        var path = $"search.json?{string.Join('&', queryParameters)}&limit=20&fields={Fields}";
+        var path = $"search.json?{string.Join('&', queryParameters)}&limit=20&fields={fields}";
         var body = await ReadResponseAsync<OpenLibraryResponse>(httpClient, path, cancellationToken);
         if (body?.Docs is null)
             throw new CatalogException(CatalogFailure.BadResponse);
