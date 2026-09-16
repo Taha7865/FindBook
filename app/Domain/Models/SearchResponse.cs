@@ -5,7 +5,7 @@ public sealed record SearchResponse(BookMatch[] Matches);
 public sealed record BookMatch(
     string OpenLibraryWorkId,
     string Title,
-    // Display names from search; work-author verification is used internally for selection.
+    // Work-author names when available; otherwise listed search names with no verified role.
     string[] Authors,
     int? FirstPublishYear,
     string OpenLibraryUrl,

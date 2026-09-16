@@ -393,6 +393,63 @@ public sealed class BookSearchServiceTests
     }
 
     [Fact]
+    public async Task Response_uses_work_authors_instead_of_search_contributors_and_keeps_edition_roles()
+    {
+        var calls = new List<string>();
+        var gemini = new StubGemini(calls)
+        {
+            SearchTerms = new("The Hobbit", null, [], null, ["illustrated"]),
+            Selection = new([new("OL1W", "The supplied edition includes illustrations.")])
+        };
+        var catalog = new StubCatalog(calls,
+        [
+            Book("OL1W", "The Hobbit", new CatalogEdition("OL1M", "The Hobbit", "2000")
+                { Contributions = ["An Illustrator (Illustrator)"] })
+                with { Authors = ["Tolkien", "An Illustrator"] }
+        ])
+        {
+            Works = new() { ["OL1W"] = new("OL1W", ["OL1A", "OL2A"]) },
+            Authors = new()
+            {
+                ["OL1A"] = new("OL1A", "J. R. R. Tolkien", ["Tolkien"]),
+                ["OL2A"] = new("OL2A", "J. R. R. Tolkien", [])
+            }
+        };
+
+        var response = await new BookSearchService(gemini, catalog, new BookSearchValidator())
+            .SearchAsync("The Hobbit illustrated", default);
+
+        var match = Assert.Single(response.Matches);
+        Assert.Equal(new[] { "J. R. R. Tolkien" }, match.Authors);
+        Assert.Equal(new[] { "An Illustrator (Illustrator)" }, Assert.Single(match.Editions).Contributions);
+    }
+
+    [Fact]
+    public async Task Response_keeps_all_resolved_work_authors()
+    {
+        var calls = new List<string>();
+        var gemini = new StubGemini(calls)
+        {
+            SearchTerms = new("Good Omens", null, [], null, []),
+            Selection = new([new("OL1W", "The title matches.")])
+        };
+        var catalog = new StubCatalog(calls, [Book("OL1W", "Good Omens") with { Authors = ["A Contributor"] }])
+        {
+            Works = new() { ["OL1W"] = new("OL1W", ["OL1A", "OL2A"]) },
+            Authors = new()
+            {
+                ["OL1A"] = new("OL1A", "Terry Pratchett", []),
+                ["OL2A"] = new("OL2A", "Neil Gaiman", [])
+            }
+        };
+
+        var response = await new BookSearchService(gemini, catalog, new BookSearchValidator())
+            .SearchAsync("Good Omens", default);
+
+        Assert.Equal(new[] { "Terry Pratchett", "Neil Gaiman" }, Assert.Single(response.Matches).Authors);
+    }
+
+    [Fact]
     public async Task Optional_verification_failure_keeps_search_results_without_claiming_authorship()
     {
         var calls = new List<string>();
@@ -411,6 +468,7 @@ public sealed class BookSearchServiceTests
         Assert.Single(catalog.WorkRequests);
         Assert.Empty(gemini.SuppliedBooks![0].WorkAuthors);
         Assert.Equal(gemini.Selection.Books[0].Explanation, Assert.Single(response.Matches).Explanation);
+        Assert.Equal(new[] { "Tolkien" }, response.Matches[0].Authors);
     }
 
     [Fact]

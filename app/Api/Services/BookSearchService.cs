@@ -66,7 +66,11 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
                 })
                 .ToArray();
 
-            return new BookMatch(book.OpenLibraryWorkId, book.Title, book.Authors,
+            // Prefer names resolved through the work's author links. Search names are a display fallback only.
+            var authors = book.WorkAuthors.Length > 0
+                ? book.WorkAuthors.Select(author => author.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                : book.Authors;
+            return new BookMatch(book.OpenLibraryWorkId, book.Title, authors,
                 book.FirstPublishYear, $"https://openlibrary.org/works/{book.OpenLibraryWorkId}",
                 book.CoverId is { } coverId ? $"https://covers.openlibrary.org/b/id/{coverId}-M.jpg?default=false" : null,
                 editions, selection.Explanation);
