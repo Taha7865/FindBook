@@ -4,53 +4,39 @@ public static class GeminiPrompts
 {
     public const string ExtractSearchTerms = """
         Extract useful Open Library search terms from the query in the user message.
-        Return a searches array containing zero to three sets of search fields, best search first.
         Return only the JSON object required by the response schema.
 
         Use title for a likely book title, author for an author's name, and keywords for
         useful remaining subject or character clues. Correct likely spelling mistakes and
         interpret partial names. Leave uncertain fields null rather than force a guess.
         For a description or character clue, you may suggest a likely title and author.
-        These suggestions are search terms, not verified book facts. A suggested title-and-author
-        search should not also require plot keywords that may be absent from its catalog record.
+        These suggestions are search terms, not verified book facts.
 
-        Use one focused search for a supplied title, an author name, or a title with author
-        and edition clues. If the user supplies only an author, leave title null; do not
-        choose a book by that author. A single broad topic also needs only one keyword search.
-
-        For a story description with several clues but no named title, use two or three
-        different searches. Include a broad search with one to three catalog-friendly subject
-        keywords, such as the main creature and occupation or activity. Try distinctive plot
-        details in a separate search. Do not require every remembered detail in every search.
-        You may include a likely title and author as another search if you recognize the story.
-        Keep explicitly supplied authors and requested edition clues in every suggestion.
-        Do not repeat identical searches or add searches merely to fill the three available slots.
+        If the user supplies only an author, leave title null. Do not choose a book by that
+        author. For broad topics, use a few useful keywords and leave title and author null.
         Do not repeat title or author words in keywords. Avoid overly restrictive searches.
         Put a specifically requested publication year in editionYear. A number used as a
         title, such as 1984, is not an edition year. Put edition clues such as illustrated
-        or deluxe in editionKeywords. Return searches: [] for unrelated requests.
+        or deluxe in editionKeywords. Use null and empty arrays for unrelated requests.
 
         Examples:
         Query: harry potter and the chamber of secrets
-        Output: {"searches":[{"title":"Harry Potter and the Chamber of Secrets","author":null,"keywords":[],"editionYear":null,"editionKeywords":[]}]}
+        Output: {"title":"Harry Potter and the Chamber of Secrets","author":null,"keywords":[],"editionYear":null,"editionKeywords":[]}
 
         Query: J.K. Rolling
-        Output: {"searches":[{"title":null,"author":"J. K. Rowling","keywords":[],"editionYear":null,"editionKeywords":[]}]}
+        Output: {"title":null,"author":"J. K. Rowling","keywords":[],"editionYear":null,"editionKeywords":[]}
 
         Query: mark huckleberry
-        Output: {"searches":[{"title":"Adventures of Huckleberry Finn","author":"Mark Twain","keywords":[],"editionYear":null,"editionKeywords":[]}]}
+        Output: {"title":"Adventures of Huckleberry Finn","author":"Mark Twain","keywords":[],"editionYear":null,"editionKeywords":[]}
 
         Query: a book about a dragon
-        Output: {"searches":[{"title":null,"author":null,"keywords":["dragons"],"editionYear":null,"editionKeywords":[]}]}
-
-        Query: a story about vampire hunters who belong to a secret society
-        Output: {"searches":[{"title":null,"author":null,"keywords":["vampires","hunters"],"editionYear":null,"editionKeywords":[]},{"title":null,"author":null,"keywords":["vampires","secret society"],"editionYear":null,"editionKeywords":[]}]}
+        Output: {"title":null,"author":null,"keywords":["dragons"],"editionYear":null,"editionKeywords":[]}
 
         Query: tolkien hobbit illustrated deluxe 1937
-        Output: {"searches":[{"title":"The Hobbit","author":"J. R. R. Tolkien","keywords":[],"editionYear":1937,"editionKeywords":["illustrated","deluxe"]}]}
+        Output: {"title":"The Hobbit","author":"J. R. R. Tolkien","keywords":[],"editionYear":1937,"editionKeywords":["illustrated","deluxe"]}
 
         Query: 1984
-        Output: {"searches":[{"title":"1984","author":null,"keywords":[],"editionYear":null,"editionKeywords":[]}]}
+        Output: {"title":"1984","author":null,"keywords":[],"editionYear":null,"editionKeywords":[]}
         """;
 
     public const string SelectBooks = """

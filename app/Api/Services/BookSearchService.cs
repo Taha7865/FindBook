@@ -13,45 +13,25 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
     public async Task<SearchResponse> SearchAsync(string query, CancellationToken cancellationToken)
     {
         var userQuery = query.Trim();
-        var suggestions = await gemini.ExtractSearchTermsAsync(userQuery, cancellationToken);
-        validator.ValidateSearchSuggestions(suggestions);
-        var searches = suggestions.Searches.Where(search => search.Title is not null
-            || search.Author is not null || search.Keywords.Length > 0).ToArray();
-        if (searches.Length == 0)
+        var searchTerms = await gemini.ExtractSearchTermsAsync(userQuery, cancellationToken);
+        validator.ValidateSearchTerms(searchTerms);
+        if (searchTerms.Title is null && searchTerms.Author is null && searchTerms.Keywords.Length == 0)
             return new SearchResponse([]);
 
-        var searchCount = 0;
-        // Space out searches from this request. Shared HTTP retries still belong to IHttpClientFactory.
-        async Task<IReadOnlyList<CatalogBook>> SearchCatalogAsync(BookSearchTerms terms)
-        {
-            if (searchCount > 0)
-                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-            searchCount++;
-            return await openLibrary.SearchAsync(terms, cancellationToken);
-        }
-
-        // Run the suggested searches before selection, so one poor query cannot hide another query's books.
-        var catalogResults = new List<CatalogBook>();
-        foreach (var search in searches)
-            catalogResults.AddRange(await SearchCatalogAsync(search));
-
-        // The first suggestion is the best interpretation; use it for the existing focused fallbacks.
-        var searchTerms = searches[0];
-        if (catalogResults.Count == 0 && searchCount < BookSearchSuggestions.MaximumSearches
-            && (searchTerms.EditionYear is not null || searchTerms.EditionKeywords.Length > 0))
+        var catalogResults = await openLibrary.SearchAsync(searchTerms, cancellationToken);
+        if (catalogResults.Count == 0 && (searchTerms.EditionYear is not null || searchTerms.EditionKeywords.Length > 0))
         {
             // Keep the requested book as a possibility when its specific edition cannot be found.
             var workSearch = searchTerms with { EditionYear = null, EditionKeywords = [] };
-            catalogResults.AddRange(await SearchCatalogAsync(workSearch));
+            catalogResults = await openLibrary.SearchAsync(workSearch, cancellationToken);
         }
         var selectionSearchTerms = searchTerms;
         var usedAuthorFallback = false;
-        if (catalogResults.Count == 0 && searchCount < BookSearchSuggestions.MaximumSearches
-            && searchTerms.Title is not null && searchTerms.Author is not null)
+        if (catalogResults.Count == 0 && searchTerms.Title is not null && searchTerms.Author is not null)
         {
             // Open Library found no records. Try the author's other books once.
             selectionSearchTerms = searchTerms with { Title = null, Keywords = [], EditionYear = null, EditionKeywords = [] };
-            catalogResults.AddRange(await SearchCatalogAsync(selectionSearchTerms));
+            catalogResults = await openLibrary.SearchAsync(selectionSearchTerms, cancellationToken);
             usedAuthorFallback = true;
         }
 
@@ -65,12 +45,12 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
         var selectedBooks = await gemini.SelectBooksAsync(userQuery, booksFromOpenLibrary, cancellationToken);
         validator.ValidateSelection(selectedBooks, booksFromOpenLibrary);
 
-        if (selectedBooks.Books.Length == 0 && !usedAuthorFallback && searchCount < BookSearchSuggestions.MaximumSearches
+        if (selectedBooks.Books.Length == 0 && !usedAuthorFallback
             && searchTerms.Title is not null && searchTerms.Author is not null)
         {
             // Records existed, but Gemini accepted none. Fetch a new author-only pool instead of reviving rejected books.
             selectionSearchTerms = searchTerms with { Title = null, Keywords = [], EditionYear = null, EditionKeywords = [] };
-            catalogResults = (await SearchCatalogAsync(selectionSearchTerms)).ToList();
+            catalogResults = await openLibrary.SearchAsync(selectionSearchTerms, cancellationToken);
             booksFromOpenLibrary = GroupWorks(catalogResults);
             if (booksFromOpenLibrary.Length == 0)
                 return new SearchResponse([]);

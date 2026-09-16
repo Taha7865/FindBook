@@ -10,150 +10,6 @@ namespace FindBook.Tests.Unit;
 public class BookSearchServiceTests
 {
     [Fact]
-    public async Task Alternative_searches_are_combined_before_one_selection_and_repeated_works_are_grouped()
-    {
-        const string query = "a zombie book with trading cards for the hunters";
-        BookSearchTerms[] searches =
-        [
-            new(null, null, ["zombies", "hunters"], null, []),
-            new(null, null, ["zombies", "trading cards"], null, []),
-            new("Rot & Ruin", "Jonathan Maberry", [], null, [])
-        ];
-        var gemini = new StubGeminiApiClient(searches[0], Select("OL2W"))
-        { SearchSuggestions = new(searches) };
-        var catalog = new StubOpenLibraryApiClient(
-            [Book("OL1W", "An unrelated book")],
-            [Book("OL2W", "Rot & Ruin") with { Subjects = ["Zombies"], Editions = [new("OL1M", "Rot & Ruin", "2010")] }],
-            [Book("OL2W", "Rot & Ruin") with { Subjects = ["Bounty hunters"], Editions = [new("OL2M", "Rot & Ruin", "2011")] }]);
-
-        var response = await new BookSearchService(gemini, catalog, new StubBookSearchValidator()).SearchAsync(query, default);
-
-        Assert.Single(gemini.ExtractionQueries);
-        Assert.Equal(searches, catalog.Searches);
-        var selectionRequest = Assert.Single(gemini.SelectionRequests);
-        Assert.Equal(query, selectionRequest.Query);
-        Assert.Equal(2, selectionRequest.Books.Count);
-        Assert.Equal(new[] { "Zombies", "Bounty hunters" }, selectionRequest.Books[1].Subjects);
-        var match = Assert.Single(response.Matches);
-        Assert.Equal("OL2W", match.OpenLibraryWorkId);
-        Assert.Equal(2, match.Editions.Length);
-        Assert.Equal(2, catalog.WorkRequests.Count);
-    }
-
-    [Fact]
-    public async Task An_empty_first_search_still_tries_the_other_suggestions_before_any_fallback()
-    {
-        var firstSearch = new BookSearchTerms("A guessed title", "A guessed author", [], null, []);
-        var secondSearch = new BookSearchTerms(null, null, ["zombies", "hunters"], null, []);
-        var gemini = new StubGeminiApiClient(firstSearch, Select("OL1W"))
-        { SearchSuggestions = new([firstSearch, secondSearch]) };
-        var catalog = new StubOpenLibraryApiClient([], [Book("OL1W", "Rot & Ruin")]);
-
-        var response = await new BookSearchService(gemini, catalog, new StubBookSearchValidator())
-            .SearchAsync("a zombie hunter story", default);
-
-        Assert.Equal(new[] { firstSearch, secondSearch }, catalog.Searches);
-        Assert.Single(gemini.SelectionRequests);
-        Assert.Equal("OL1W", Assert.Single(response.Matches).OpenLibraryWorkId);
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task Three_searches_exhaust_the_budget_even_when_empty_or_rejected(bool emptyCatalog)
-    {
-        var firstSearch = new BookSearchTerms("The Hobbit", "Tolkien", [], 1937, ["deluxe"]);
-        var gemini = new StubGeminiApiClient(firstSearch, Select())
-        {
-            SearchSuggestions = new([firstSearch, firstSearch with { Keywords = ["dragons"] },
-                firstSearch with { Keywords = ["adventures"] }])
-        };
-        var catalog = new StubOpenLibraryApiClient([], [], emptyCatalog ? [] : [Book("OL1W", "The Hobbit")]);
-
-        var response = await new BookSearchService(gemini, catalog, new StubBookSearchValidator())
-            .SearchAsync("The Hobbit Tolkien deluxe 1937", default);
-
-        Assert.Empty(response.Matches);
-        Assert.Equal(3, catalog.Searches.Count);
-        Assert.Equal(emptyCatalog ? 0 : 1, gemini.SelectionRequests.Count);
-    }
-
-    [Fact]
-    public async Task Two_rejected_searches_can_use_the_last_slot_for_one_author_fallback()
-    {
-        var firstSearch = new BookSearchTerms("A guessed title", "Tolkien", [], null, []);
-        var gemini = new StubGeminiApiClient(firstSearch, Select(), Select("OL3W"))
-        { SearchSuggestions = new([firstSearch, firstSearch with { Title = "Another guessed title" }]) };
-        var catalog = new StubOpenLibraryApiClient([Book("OL1W", "First rejected book")],
-            [Book("OL2W", "Second rejected book")], [Book("OL3W", "The Hobbit")]);
-
-        var response = await new BookSearchService(gemini, catalog, new StubBookSearchValidator())
-            .SearchAsync("a book by Tolkien", default);
-
-        Assert.Equal(3, catalog.Searches.Count);
-        Assert.Null(catalog.Searches[2].Title);
-        Assert.Equal("Tolkien", catalog.Searches[2].Author);
-        Assert.Equal(2, gemini.SelectionRequests.Count);
-        Assert.Equal("OL3W", Assert.Single(gemini.SelectionRequests[1].Books).OpenLibraryWorkId);
-        Assert.Equal("OL3W", Assert.Single(response.Matches).OpenLibraryWorkId);
-    }
-
-    [Fact]
-    public async Task Edition_fallback_uses_the_last_slot_without_starting_a_fourth_author_search()
-    {
-        var firstSearch = new BookSearchTerms("The Hobbit", "Tolkien", [], 1937, ["deluxe"]);
-        var gemini = new StubGeminiApiClient(firstSearch)
-        { SearchSuggestions = new([firstSearch, firstSearch with { Keywords = ["dragons"] }]) };
-        var catalog = new StubOpenLibraryApiClient([], [], []);
-
-        var response = await new BookSearchService(gemini, catalog, new StubBookSearchValidator())
-            .SearchAsync("tolkien hobbit deluxe 1937", default);
-
-        Assert.Empty(response.Matches);
-        Assert.Equal(3, catalog.Searches.Count);
-        Assert.All(catalog.Searches.Take(2), search => Assert.Equal(1937, search.EditionYear));
-        Assert.Equal("The Hobbit", catalog.Searches[2].Title);
-        Assert.Null(catalog.Searches[2].EditionYear);
-        Assert.Empty(gemini.SelectionRequests);
-    }
-
-    [Fact]
-    public async Task Verification_limit_applies_to_the_combined_results_instead_of_each_search()
-    {
-        BookSearchTerms[] searches =
-        [
-            new(null, null, ["zombies"], null, []),
-            new(null, null, ["zombies", "hunters"], null, []),
-            new(null, null, ["zombies", "cards"], null, [])
-        ];
-        var gemini = new StubGeminiApiClient(searches[0], Select("OL60W"))
-        { SearchSuggestions = new(searches) };
-        var books = Enumerable.Range(1, 60).Select(index => Book($"OL{index}W", $"Book {index}")).ToArray();
-        var catalog = new StubOpenLibraryApiClient(books[..20], books[20..40], books[40..]);
-
-        var response = await new BookSearchService(gemini, catalog, new StubBookSearchValidator())
-            .SearchAsync("a zombie hunter book with trading cards", default);
-
-        Assert.Equal(60, Assert.Single(gemini.SelectionRequests).Books.Count);
-        Assert.Equal(5, catalog.WorkRequests.Count);
-        Assert.Equal("OL60W", Assert.Single(response.Matches).OpenLibraryWorkId);
-    }
-
-    [Fact]
-    public async Task No_search_suggestions_returns_no_matches_without_catalog_access()
-    {
-        var gemini = new StubGeminiApiClient(new(null, null, [], null, [])) { SearchSuggestions = new([]) };
-        var catalog = new StubOpenLibraryApiClient();
-
-        var response = await new BookSearchService(gemini, catalog, new StubBookSearchValidator())
-            .SearchAsync("hello", default);
-
-        Assert.Empty(response.Matches);
-        Assert.Empty(catalog.Searches);
-        Assert.Empty(gemini.SelectionRequests);
-    }
-
-    [Fact]
     public async Task Groups_editions_under_one_work_and_returns_fetched_metadata_with_geminis_explanation()
     {
         var firstEdition = new CatalogEdition("OL1M", "The Hobbit", "1937");
@@ -709,16 +565,15 @@ public class BookSearchServiceTests
     private class StubGeminiApiClient(BookSearchTerms searchTerms, params BookSelection[] selections) : IGeminiApiClient
     {
         private readonly Queue<BookSelection> _selections = new(selections);
-        public BookSearchSuggestions SearchSuggestions { get; init; } = new([searchTerms]);
         public List<string> ExtractionQueries { get; } = [];
         public List<(string Query, IReadOnlyList<CatalogBook> Books)> SelectionRequests { get; } = [];
         public List<CancellationToken> Tokens { get; } = [];
 
-        public Task<BookSearchSuggestions> ExtractSearchTermsAsync(string userQuery, CancellationToken cancellationToken)
+        public Task<BookSearchTerms> ExtractSearchTermsAsync(string userQuery, CancellationToken cancellationToken)
         {
             ExtractionQueries.Add(userQuery);
             Tokens.Add(cancellationToken);
-            return Task.FromResult(SearchSuggestions);
+            return Task.FromResult(searchTerms);
         }
 
         public Task<BookSelection> SelectBooksAsync(string userQuery, IReadOnlyList<CatalogBook> booksFromOpenLibrary,
@@ -771,12 +626,12 @@ public class BookSearchServiceTests
     {
         public Exception? SearchTermsException { get; init; }
         public Exception? SelectionException { get; init; }
-        public List<BookSearchSuggestions> ValidatedTerms { get; } = [];
+        public List<BookSearchTerms> ValidatedTerms { get; } = [];
         public List<(BookSelection Selection, IReadOnlyList<CatalogBook> Books)> ValidatedSelections { get; } = [];
 
-        public void ValidateSearchSuggestions(BookSearchSuggestions suggestions)
+        public void ValidateSearchTerms(BookSearchTerms searchTerms)
         {
-            ValidatedTerms.Add(suggestions);
+            ValidatedTerms.Add(searchTerms);
             if (SearchTermsException is not null) throw SearchTermsException;
         }
 
