@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { BookMatch } from "./models";
 
-export default function BookResult({ book, rank, showRank }: { book: BookMatch; rank: number; showRank: boolean }) {
+export default function BookResult({ book }: { book: BookMatch }) {
   const [coverFailed, setCoverFailed] = useState(false);
 
   return (
@@ -15,7 +15,7 @@ export default function BookResult({ book, rank, showRank }: { book: BookMatch; 
         ) : <div className="cover-placeholder" aria-label="Cover unavailable"><span aria-hidden="true">{book.title}</span><small>Cover unavailable</small></div>}
       </div>
       <div className="book-details">
-        <div className="book-meta">{showRank && <span className="rank">Match {String(rank).padStart(2, "0")}</span>}{book.firstPublishYear !== null && <span>First published {book.firstPublishYear}</span>}</div>
+        {book.firstPublishYear !== null && <div className="book-meta">First published {book.firstPublishYear}</div>}
         <h3><a href={book.openLibraryUrl} target="_blank" rel="noopener noreferrer">{book.title}</a></h3>
         {book.primaryAuthor && <p className="book-author">Primary author: {book.primaryAuthor}</p>}
         {(!book.primaryAuthor || book.authors.length > 1) && (

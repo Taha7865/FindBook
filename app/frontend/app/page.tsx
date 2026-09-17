@@ -132,8 +132,8 @@ export default function Home() {
                 {result.matches.length === 0 ? "No matching books found." : result.matches.length === 1 ? "One book to explore" : `${result.matches.length} books to explore`}
               </h2>
               {result.matches.length === 0 ? <p className="empty-message">Try a shorter title, an author’s name, or a different detail. You can also leave out the year to broaden the search.</p>
-                : <ol className="result-list" aria-label="Books in match order">{result.matches.map((book, index) => (
-                  <li key={book.openLibraryWorkId}><BookResult book={book} rank={index + 1} showRank={result.matches.length > 1} /></li>
+                : <ol className="result-list" aria-label="Books in match order">{result.matches.map(book => (
+                  <li key={book.openLibraryWorkId}><BookResult book={book} /></li>
                 ))}</ol>}
             </div>}
           </section>

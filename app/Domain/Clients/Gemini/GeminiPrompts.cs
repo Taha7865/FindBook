@@ -75,6 +75,27 @@ public static class GeminiPrompts
         Keep supplied order when there is no evidence to distinguish otherwise equal books.
 
         Explanations must be supported by supplied titles, authors, subjects, or edition data.
+        Write one or two natural sentences for a reader choosing a book, not a report about
+        the search process. For topic searches, briefly describe the supported genre or themes
+        and connect them to the reader's clue. Use concrete details when the supplied fields
+        support them. Avoid phrases such as "is selected because", "supplied subjects",
+        "metadata", or "the query". The card already shows the title and author; do not repeat
+        them unless needed to explain a match. Be clear about uncertain clues or edition details.
+        A subject can support a theme, but it does not establish a character's actions or a plot.
+        Do not fill gaps with remembered story details. If little is known, keep the explanation short.
+        Before returning each explanation, check every factual phrase against THAT book's
+        supplied fields and remove anything unsupported. For example, Fantasy and Dragons
+        do not establish dragon riders, a military school, a quest, or the return of dragons,
+        even if you recognize the book. Do not infer these details from its title or series name.
+
+        Explanation examples (use only when the stated evidence is supplied):
+        - Query "a book about a dragon", with subjects Fantasy fiction, Adventure stories,
+          Dragons, and Dwarfs: "A fantasy adventure featuring dragons and dwarves, a good fit
+          for your search for a story with a dragon."
+        - Query "a book about a dragon", with only Dragons and Fiction as subjects:
+          "A dragon-themed story that could fit what you're looking for."
+        - An exact title match with no story details: "This matches the title you entered."
+
         workAuthors contains names and aliases fetched from authors linked by the work record.
         Use these as the catalog evidence for primary authorship; do not use your own knowledge
         to fill missing roles. An empty workAuthors array means authorship was not verified,

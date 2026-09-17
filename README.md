@@ -15,6 +15,8 @@ flowchart TD
 
 Results include `authors[]` and a nullable `primaryAuthor`. We label a primary author only when the work lists one author, or explicitly marks one as "primary author", and all linked author records resolve. Missing or incomplete details leave `primaryAuthor` null.
 
+Each result includes a short explanation connecting the book's fetched details to the search. Gemini can describe supported genres and themes, but must not invent plot details when the catalog provides little information.
+
 ## Run locally
 
 1. [Get a free Gemini API key in Google AI Studio](https://aistudio.google.com/apikey): sign in with your Google account, click **Create API key**, and copy the key. Free-tier usage limits apply.

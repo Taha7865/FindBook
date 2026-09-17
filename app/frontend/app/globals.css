@@ -51,7 +51,6 @@ footer a { text-decoration-color: #a2a9ad; }
 .cover-placeholder > span { font: 16px/1.4 Georgia, serif; overflow-wrap: anywhere; }
 .cover-placeholder small { font-size: 9px; }
 .book-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 8px; color: var(--muted); font-size: 11px; line-height: 1.5; }
-.rank { color: var(--accent); font-weight: 600; }
 .book-details { min-width: 0; }
 .book-details h3 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: 25px; line-height: 1.25; letter-spacing: -.4px; overflow-wrap: anywhere; }
 .book-details h3 a { text-decoration: none; }
