@@ -98,37 +98,38 @@ export default function Home() {
 
       <main className="main">
         <section className="search-area" aria-labelledby="page-title">
-          <h1 id="page-title">Find That Book</h1>
-          <form onSubmit={submit} className="composer">
+          <p className="eyebrow">A little memory. A new discovery.</p>
+          <h1 id="page-title">A book on your mind?</h1>
+          <p className="intro">Start with a title, an author, or the details you remember.</p>
+          <form onSubmit={submit} className="search-form">
             <label htmlFor="book-query" className="sr-only">Describe the book you want to find</label>
             <textarea ref={input} id="book-query" name="query" value={query} rows={2} maxLength={1000}
               placeholder="A title, an author, or something you remember…"
               onChange={event => setQuery(event.target.value)} onKeyDown={handleKeyDown}
               disabled={isSearching} aria-describedby="input-hint" />
-            <div className="composer-bottom">
+            <div className="search-actions">
               <span id="input-hint">{query.length > 800 ? `${query.length} / 1,000` : "Enter to search · Shift + Enter for a new line"}</span>
               {isSearching ? (
-                <button type="button" className="send-button" aria-label="Stop search" onClick={cancelSearch}><span className="stop-icon" /></button>
+                <button type="button" className="search-button" aria-label="Stop search" onClick={cancelSearch}><span className="stop-icon" />Stop search</button>
               ) : (
-                <button type="submit" className="send-button" aria-label="Search books" disabled={!query.trim()}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                <button type="submit" className="search-button" aria-label="Search books" disabled={!query.trim()}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="1.8" /><path d="m16 16 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>Search books
                 </button>
               )}
             </div>
           </form>
-          {!hasSearch && <p className="intro">You don’t need the whole story. Just a few details.</p>}
         </section>
 
         {hasSearch && (
-          <section className="conversation" aria-label="Search results">
-            <div className="query-bubble">{submittedQuery}</div>
+          <section className="search-results" aria-label="Search results">
+            <p className="search-context">Results for <span>“{submittedQuery}”</span></p>
             <p role="status" aria-live="polite" className={status ? "search-status" : "sr-only"}>
               {isSearching && <span className="loading-dot" aria-hidden="true" />}{status}
             </p>
-            {error && <div role="alert" className="error-message"><h2>We couldn’t finish that search.</h2><p>{error}</p><p>Your query is still above. Press Enter or the arrow to try again.</p></div>}
+            {error && <div role="alert" className="error-message"><h2>We couldn’t finish that search.</h2><p>{error}</p><p>Your query is still above. Press Enter or select Search books to try again.</p></div>}
             {result && <div className="results">
               <h2 ref={resultsHeading} tabIndex={-1}>
-                {result.matches.length === 0 ? "No matching books found." : result.matches.length === 1 ? "Here’s a match for your search." : "Here are the closest matches, in order."}
+                {result.matches.length === 0 ? "No matching books found." : result.matches.length === 1 ? "One book to explore" : `${result.matches.length} books to explore`}
               </h2>
               {result.matches.length === 0 ? <p className="empty-message">Try a shorter title, an author’s name, or a different detail. You can also leave out the year to broaden the search.</p>
                 : <ol className="result-list" aria-label="Books in match order">{result.matches.map((book, index) => (
@@ -138,7 +139,7 @@ export default function Home() {
           </section>
         )}
       </main>
-      <footer>Book details from <a href="https://openlibrary.org" target="_blank" rel="noopener noreferrer">Open Library</a>. Matches can be imperfect.</footer>
+      <footer>Find a book. Follow your curiosity.<span>Book details from <a href="https://openlibrary.org" target="_blank" rel="noopener noreferrer">Open Library</a>. Matches can be imperfect.</span></footer>
     </div>
   );
 }
