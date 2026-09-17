@@ -67,13 +67,17 @@ A search is one browser request. The backend normally makes two Gemini calls, wi
 
 ```mermaid
 flowchart TD
-    Browser[Next.js page] --> Route[Next.js server route]
-    Route --> Controller[BooksController]
-    Controller --> Service[BookSearchService]
-    Service --> Gemini[GeminiApiClient: extract and select]
-    Service --> Library[OpenLibraryApiClient: search and fetch details]
-    Service --> Validator[BookSearchValidator]
+    A["User's search text"] --> B["Next.js forwards the request to the controller"]
+    B --> C["Search service coordinates the work"]
+    C --> D["Gemini extracts search terms"]
+    D --> E["C# validates the terms and searches Open Library"]
+    E --> F["Group works and check available author and edition details"]
+    F --> G["Gemini selects books and explains the matches"]
+    G --> H["C# validates and prioritizes only accepted books"]
+    H --> I["API returns the final book results"]
 ```
+
+This shows the normal successful path. Empty results can trigger the limited fallbacks described below. Gemini does not control those calls; the search service does.
 
 | Location | Responsibility |
 | --- | --- |
@@ -95,13 +99,17 @@ Controllers handle HTTP requests and errors. The service coordinates the search.
 
 ## Assumptions and design decisions
 
+### Requirement priorities
+
+I prioritized the complete search flow, then reliable selection boundaries and failure handling. Specific searches should identify the intended book, author-only searches should offer up to five relevant works, and editions should stay grouped. Gemini handles language interpretation; C# enforces rules that can be checked against catalog data. I focused testing on those boundaries and on provider failures. Caching, broader search expansion, and automated browser tests were deferred to keep the assessment scope manageable.
+
 ### Gemini and the C# helper have different jobs
 
 Gemini handles interpretation, near matches, subtitle variants, relevance, and explanations. The selection prompt asks it to prefer exact title and work-author matches, then contributor matches, near matches, and relevant author alternatives. These are model instructions, not a mathematical scoring guarantee.
 
 This keeps language interpretation out of a large C# matcher full of special cases. The tradeoff is that model results can vary, take longer, and occasionally be wrong. Explicit calls keep the sequence and request limits visible in the service; Gemini does not call Open Library tools itself.
 
-The C# helper only operates on books Gemini accepted. It normalizes case, punctuation, and accents, then checks the original query against full titles and fetched work-author names or aliases. It prefers those exact matches and can reduce exact-title alternatives to one when a single positive reading-list count leads. Author-only results are ordered by that count. It does not interpret plot clues, calculate a confidence score, or restore a rejected book.
+The C# helper only operates on books Gemini accepted. It normalizes case, punctuation, and accents, then checks the original query against full titles and fetched work-author names or aliases. It prefers those exact matches and can reduce exact-title alternatives to one when a single positive reading-list count leads. Author-only results are ordered by that count. It makes no API calls and does not interpret plot clues, calculate a confidence score, or restore a rejected book.
 
 Gemini rejecting all candidates is a valid empty selection. Invalid JSON or invented work IDs are errors, not empty searches. A successful search with no matches returns `200` with `matches: []`; empty input returns `400`.
 
@@ -110,6 +118,8 @@ Gemini rejecting all candidates is a valid empty selection. Invalid JSON or inve
 Open Library supplies the book facts. Gemini can suggest search terms, but it must select IDs from the fetched candidates. The validator enforces that boundary and rejects duplicate selections. Prompts ask for natural explanations grounded in the supplied fields; validation does not prove that every sentence is factually supported.
 
 A **work** is the overall book; an **edition** is a particular published version. Grouping uses Open Library's work ID, so separate catalog IDs for the same real book are not automatically merged. A work's first publication year is not used as an edition's publication date.
+
+`GroupWorks` combines records with the same work ID. `ReadEditionAsync` fetches one edition and checks its parent work and requested year; it does not group books. General "published in" requests use the work's `first_publish_year`, while explicit edition or reprint years use `publish_year` and edition details.
 
 `authors[]` remains available. `primaryAuthor` is set only when the work links one author, or uniquely marks an author with the role `primary author`, and all linked author lookups succeed. Otherwise it is `null`. This is an application rule based on catalog evidence, not a dedicated Open Library primary-author field. The UI uses this value for its label.
 
@@ -128,6 +138,8 @@ Author verification checks up to five candidate works per round and shares a lim
 Non-secret settings live in `app/Api/appsettings.json` and bind to client options. `IHttpClientFactory` creates the configured clients. A shared .NET resilience handler retries transient failures for both providers: two retries, exponential delays with jitter, and support for `Retry-After`. Client timeouts also cover retry delays. Retrying a Gemini request can use additional quota.
 
 The browser talks to a Next.js server route, which forwards to the API. Only the API uses the Gemini key. `Safeguard.cs` separates system instructions from user and catalog data; structured output and validation add checks. This is a basic prompt-injection precaution, not a complete defense. The app needs no database or user account.
+
+There is no persistent cache, vector search system, or AI tool-calling framework. Each search fetches fresh provider results, although author lookups are reused within that request. This keeps the application small but makes response time and availability depend on external services.
 
 ## Testing strategy
 
