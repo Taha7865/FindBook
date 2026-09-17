@@ -18,7 +18,7 @@ public sealed class BookSearchValidatorTests
             null!, valid with { Title = " " }, valid with { Author = new string('a', 201) },
             valid with { Keywords = null! }, valid with { Keywords = [null!] },
             valid with { Keywords = Enumerable.Repeat("word", 9).ToArray() },
-            valid with { EditionKeywords = [new string('x', 101)] }, valid with { EditionYear = 0 }
+            valid with { EditionKeywords = [new string('x', 101)] }, valid with { EditionYear = 0 }, valid with { FirstPublishYear = 0 }, valid with { FirstPublishYear = 10000 }
         ];
         foreach (var terms in invalid)
             Assert.Throws<GeminiApiException>(() => _validator.ValidateSearchTerms(terms));

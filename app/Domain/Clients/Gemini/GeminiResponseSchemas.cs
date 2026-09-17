@@ -11,10 +11,11 @@ internal static class GeminiResponseSchemas
             "title": { "type": ["string", "null"] },
             "author": { "type": ["string", "null"] },
             "keywords": { "type": "array", "items": { "type": "string" }, "maxItems": 8 },
+            "firstPublishYear": { "type": ["integer", "null"], "minimum": 1, "maximum": 9999 },
             "editionYear": { "type": ["integer", "null"], "minimum": 1, "maximum": 9999 },
             "editionKeywords": { "type": "array", "items": { "type": "string" }, "maxItems": 5 }
           },
-          "required": ["title", "author", "keywords", "editionYear", "editionKeywords"],
+          "required": ["title", "author", "keywords", "firstPublishYear", "editionYear", "editionKeywords"],
           "additionalProperties": false
         }
         """);

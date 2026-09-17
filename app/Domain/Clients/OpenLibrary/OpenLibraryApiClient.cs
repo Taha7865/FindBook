@@ -23,12 +23,14 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
             queryParameters.Add($"title={Uri.EscapeDataString(title)}");
         if (searchTerms.Author is { } author)
             queryParameters.Add($"author={Uri.EscapeDataString(author)}");
-        // This means the user requested a year or edition feature, not simply that the book has editions.
+        // Only an explicit edition request needs edition records.
         var hasEditionRequest = searchTerms.EditionYear is not null || searchTerms.EditionKeywords.Length > 0;
         // These conditions become the value of Open Library's general search parameter, q.
         var queryParts = new List<string>();
         if (searchTerms.Keywords.Length > 0)
             queryParts.Add(string.Join(' ', searchTerms.Keywords));
+        if (searchTerms.FirstPublishYear is { } firstYear)
+            queryParts.Add($"first_publish_year:{firstYear}");
         if (searchTerms.EditionYear is { } year)
             queryParts.Add($"publish_year:{year}");
         // Quote each edition phrase and escape embedded quotes/backslashes so they do not break that phrase.
@@ -56,10 +58,16 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
 
         var books = new List<CatalogBook>();
         var editionLookups = 0;
+        var validRecords = 0;
         foreach (var item in body.Docs)
         {
             var openLibraryWorkId = ReadId(item?.Key, "works", 'W');
             if (openLibraryWorkId is null || string.IsNullOrWhiteSpace(item?.Title))
+                continue;
+
+            validRecords++;
+            // A requested first-publication year must be supported by the work, not a later edition.
+            if (searchTerms.FirstPublishYear is { } requestedFirstYear && item.FirstPublishYear != requestedFirstYear)
                 continue;
 
             // Search names are display metadata. The service separately checks work-author records.
@@ -104,7 +112,7 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
             });
         }
 
-        if (body.Docs.Length > 0 && books.Count == 0)
+        if (body.Docs.Length > 0 && validRecords == 0)
             throw new CatalogException(CatalogFailure.BadResponse);
 
         return books;

@@ -11,7 +11,7 @@ public sealed class GeminiApiClientTests
 {
     private const string TestKey = "test-key-not-a-real-credential";
     private const string SearchTermsJson = """
-        {"title":null,"author":"J. K. Rowling","keywords":[],"editionYear":null,"editionKeywords":[]}
+        {"title":null,"author":"J. K. Rowling","keywords":[],"firstPublishYear":null,"editionYear":null,"editionKeywords":[]}
         """;
 
     [Fact]

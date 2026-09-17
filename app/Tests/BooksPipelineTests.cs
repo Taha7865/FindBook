@@ -39,6 +39,32 @@ public sealed class BooksPipelineTests
     }
 
     [Theory]
+    [InlineData(1937, true)]
+    [InlineData(2000, false)]
+    public async Task Topic_publication_year_keeps_matching_works_and_excludes_other_years(int year, bool matches)
+    {
+        using var app = new SearchApp { FirstPublishYear = year };
+        using var client = app.CreateClient();
+        using var response = await client.PostAsJsonAsync("/api/books/search", new { query = $"a book about a dragon, published in {year}" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var books = (await response.Content.ReadFromJsonAsync<SearchResponse>())!.Matches;
+        if (matches)
+        {
+            var book = Assert.Single(books);
+            Assert.Equal("The Hobbit", book.Title);
+            Assert.Equal(year, book.FirstPublishYear);
+            Assert.Empty(book.Editions);
+        }
+        else
+        {
+            Assert.Empty(books);
+        }
+        Assert.Equal(matches ? 2 : 1, app.GeminiCalls);
+        Assert.Equal(matches ? 3 : 1, app.CatalogCalls);
+    }
+
+    [Theory]
     [InlineData("{}", "application/json", 400)]
     [InlineData("{\"query\":\"  \"}", "application/json", 400)]
     [InlineData("{\"query\":null}", "application/json", 400)]
@@ -103,6 +129,7 @@ public sealed class BooksPipelineTests
     private sealed class SearchApp : WebApplicationFactory<BooksController>
     {
         public const string SensitiveBody = "private-upstream-response";
+        public int? FirstPublishYear { get; init; }
         public string? FailureProvider { get; init; }
         public int FailureStatus { get; init; }
         public string Selection { get; init; } = """{"books":[{"openLibraryWorkId":"OL1W","explanation":"The title matches."}]}""";
@@ -129,8 +156,11 @@ public sealed class BooksPipelineTests
                         Assert.Equal("gemini.test", request.RequestUri!.Host);
                         GeminiCalls++;
                         if (FailureProvider == "Gemini") return Json(SensitiveBody, FailureStatus);
+                        var terms = FirstPublishYear is { } year
+                            ? new BookSearchTerms(null, null, ["dragons"], null, []) { FirstPublishYear = year }
+                            : new BookSearchTerms("The Hobbit", "Tolkien", [], null, []);
                         var output = GeminiCalls == 1
-                            ? """{"title":"The Hobbit","author":"Tolkien","keywords":[],"editionYear":null,"editionKeywords":[]}"""
+                            ? JsonSerializer.Serialize(terms, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                             : Selection;
                         return Json(JsonSerializer.Serialize(new { candidates = new[] { new { finishReason = "STOP", content = new { parts = new[] { new { text = output } } } } } }));
                     }));
@@ -143,6 +173,13 @@ public sealed class BooksPipelineTests
                         switch (request.RequestUri.AbsolutePath)
                         {
                             case "/search.json":
+                                if (FirstPublishYear is { } requestedYear)
+                                {
+                                    var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(request.RequestUri.Query);
+                                    Assert.Equal($"dragons AND first_publish_year:{requestedYear}", query["q"]);
+                                    Assert.DoesNotContain("editions", query["fields"].ToString());
+                                    Assert.False(query.ContainsKey("title"));
+                                }
                                 return Json("""{"docs":[{"key":"/works/OL1W","title":"The Hobbit","author_name":["Tolkien"],"first_publish_year":1937,"cover_i":42}]}""");
                             case "/works/OL1W.json":
                                 return Json("""{"key":"/works/OL1W","authors":[{"author":{"key":"/authors/OL1A"}}]}""");

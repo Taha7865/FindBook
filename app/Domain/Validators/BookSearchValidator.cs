@@ -9,7 +9,8 @@ public sealed class BookSearchValidator : IBookSearchValidator
     {
         if (searchTerms is null || !IsOptionalText(searchTerms.Title) || !IsOptionalText(searchTerms.Author)
             || !IsTextList(searchTerms.Keywords, 8) || !IsTextList(searchTerms.EditionKeywords, 5)
-            || searchTerms.EditionYear is < 1 or > 9999)
+            || searchTerms.EditionYear is < 1 or > 9999
+            || searchTerms.FirstPublishYear is < 1 or > 9999)
             throw new GeminiApiException(GeminiApiFailureReason.BadResponse);
     }
 

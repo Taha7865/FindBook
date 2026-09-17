@@ -16,7 +16,8 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
         var userQuery = query.Trim();
         var searchTerms = await gemini.ExtractSearchTermsAsync(userQuery, cancellationToken);
         validator.ValidateSearchTerms(searchTerms);
-        if (searchTerms.Title is null && searchTerms.Author is null && searchTerms.Keywords.Length == 0)
+        if (searchTerms.Title is null && searchTerms.Author is null && searchTerms.Keywords.Length == 0
+            && searchTerms.FirstPublishYear is null)
             return new SearchResponse([]);
 
         var catalogResults = await openLibrary.SearchAsync(searchTerms, cancellationToken);

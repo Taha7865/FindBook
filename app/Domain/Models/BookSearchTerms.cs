@@ -7,4 +7,8 @@ public sealed record BookSearchTerms(
     [property: JsonRequired] string? Author,
     [property: JsonRequired] string[] Keywords,
     [property: JsonRequired] int? EditionYear,
-    [property: JsonRequired] string[] EditionKeywords);
+    [property: JsonRequired] string[] EditionKeywords)
+{
+    [JsonRequired]
+    public int? FirstPublishYear { get; init; }
+}

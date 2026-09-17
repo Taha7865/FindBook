@@ -12,6 +12,19 @@ public sealed class OpenLibraryEditionTests
         """;
 
     [Fact]
+    public async Task First_publication_does_not_verify_the_year_of_a_requested_edition()
+    {
+        var client = CreateClient(path => path == "/search.json" ? SearchResponse
+            : """{"key":"/books/OL2M","title":"The Hobbit","publish_date":"2001","works":[{"key":"/works/OL1W"}]}""");
+
+        var book = Assert.Single(await client.SearchAsync(
+            new("The Hobbit", null, [], 1937, []) { FirstPublishYear = 1937 }, default));
+
+        Assert.Equal(1937, book.FirstPublishYear);
+        Assert.Empty(book.Editions);
+    }
+
+    [Fact]
     public async Task Fetches_requested_edition_date_and_features_from_its_own_record()
     {
         var paths = new List<string>();

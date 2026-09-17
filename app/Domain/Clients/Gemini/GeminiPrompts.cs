@@ -15,28 +15,40 @@ public static class GeminiPrompts
         If the user supplies only an author, leave title null. Do not choose a book by that
         author. For broad topics, use a few useful keywords and leave title and author null.
         Do not repeat title or author words in keywords. Avoid overly restrictive searches.
-        Put a specifically requested publication year in editionYear. A number used as a
-        title, such as 1984, is not an edition year. Put edition clues such as illustrated
-        or deluxe in editionKeywords. Use null and empty arrays for unrelated requests.
+        Use firstPublishYear for a book described as "published in", "released in", or
+        "first published in" a year, unless the user explicitly asks for an edition or reprint.
+        Use editionYear only for an explicit edition or reprint date; do not also set
+        firstPublishYear unless the user separately supplies the original publication year.
+        A number used as a title, such as 1984, is not a publication-year filter.
+        Put edition clues such as illustrated or deluxe in editionKeywords.
+        Adding a year to a broad topic must keep it a topic search: leave title and author
+        null and keep the topic in keywords. Do not turn "about a dragon" into a title.
+        Use null and empty arrays for unrelated requests.
 
         Examples:
         Query: harry potter and the chamber of secrets
-        Output: {"title":"Harry Potter and the Chamber of Secrets","author":null,"keywords":[],"editionYear":null,"editionKeywords":[]}
+        Output: {"title":"Harry Potter and the Chamber of Secrets","author":null,"keywords":[],"firstPublishYear":null,"editionYear":null,"editionKeywords":[]}
 
         Query: J.K. Rolling
-        Output: {"title":null,"author":"J. K. Rowling","keywords":[],"editionYear":null,"editionKeywords":[]}
+        Output: {"title":null,"author":"J. K. Rowling","keywords":[],"firstPublishYear":null,"editionYear":null,"editionKeywords":[]}
 
         Query: mark huckleberry
-        Output: {"title":"Adventures of Huckleberry Finn","author":"Mark Twain","keywords":[],"editionYear":null,"editionKeywords":[]}
+        Output: {"title":"Adventures of Huckleberry Finn","author":"Mark Twain","keywords":[],"firstPublishYear":null,"editionYear":null,"editionKeywords":[]}
 
         Query: a book about a dragon
-        Output: {"title":null,"author":null,"keywords":["dragons"],"editionYear":null,"editionKeywords":[]}
+        Output: {"title":null,"author":null,"keywords":["dragons"],"firstPublishYear":null,"editionYear":null,"editionKeywords":[]}
+
+        Query: a book about a dragon, published in 1937
+        Output: {"title":null,"author":null,"keywords":["dragons"],"firstPublishYear":1937,"editionYear":null,"editionKeywords":[]}
+
+        Query: The Hobbit, 2001 edition
+        Output: {"title":"The Hobbit","author":null,"keywords":[],"firstPublishYear":null,"editionYear":2001,"editionKeywords":[]}
 
         Query: tolkien hobbit illustrated deluxe 1937
-        Output: {"title":"The Hobbit","author":"J. R. R. Tolkien","keywords":[],"editionYear":1937,"editionKeywords":["illustrated","deluxe"]}
+        Output: {"title":"The Hobbit","author":"J. R. R. Tolkien","keywords":[],"firstPublishYear":null,"editionYear":1937,"editionKeywords":["illustrated","deluxe"]}
 
         Query: 1984
-        Output: {"title":"1984","author":null,"keywords":[],"editionYear":null,"editionKeywords":[]}
+        Output: {"title":"1984","author":null,"keywords":[],"firstPublishYear":null,"editionYear":null,"editionKeywords":[]}
         """;
 
     public const string SelectBooks = """
@@ -112,6 +124,8 @@ public static class GeminiPrompts
         A requested year alone does not verify words such as illustrated or deluxe.
         Prefer a book with an edition whose supplied fields support the requested year and
         features. If edition details are absent, the requested edition remains unverified.
+        For a general "published in" or "first published in" year, use FirstPublishYear.
+        Do not reject a matching work just because its displayed edition is newer or absent.
         FirstPublishYear describes the work, not a specific edition. Claim a requested edition
         year or feature only when its supplied edition data establishes it. If unavailable,
         explain that the work is a possible match but the requested edition is unverified.
