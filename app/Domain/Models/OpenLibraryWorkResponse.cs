@@ -11,6 +11,7 @@ internal class OpenLibraryWorkResponse
 internal class OpenLibraryAuthorRole
 {
     public OpenLibraryAuthorReference? Author { get; init; }
+    public string? Role { get; init; }
 }
 
 internal class OpenLibraryAuthorReference

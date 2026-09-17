@@ -14,6 +14,7 @@ export type BookMatch = {
   openLibraryWorkId: string;
   title: string;
   authors: string[];
+  primaryAuthor: string | null;
   firstPublishYear: number | null;
   openLibraryUrl: string;
   coverUrl: string | null;

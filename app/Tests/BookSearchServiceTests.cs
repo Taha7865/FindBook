@@ -10,6 +10,37 @@ namespace FindBook.Tests;
 
 public class BookSearchServiceTests
 {
+    [Theory]
+    [InlineData(1, 1, "OL1A", "Writer 1")]
+    [InlineData(2, 2, null, null)]
+    [InlineData(2, 2, "OL2A", "Writer 2")]
+    [InlineData(2, 1, null, null)]
+    [InlineData(2, 1, "OL1A", null)]
+    [InlineData(1, 0, "OL1A", null)]
+    [InlineData(0, 0, null, null)]
+    public async Task Exposes_a_primary_author_only_when_the_catalog_identifies_one_and_all_authors_resolve(
+        int linkedAuthors, int resolvedAuthors, string? primaryAuthorId, string? expectedPrimaryAuthor)
+    {
+        var gemini = new StubGeminiApiClient(new("Example", null, [], null, []), Select("OL1W"));
+        var catalog = new StubOpenLibraryApiClient([Book("OL1W", "Example") with { Authors = ["Listed writer"] }]);
+        catalog.Works["OL1W"] = new("OL1W", Enumerable.Range(1, linkedAuthors).Select(i => $"OL{i}A").ToArray())
+        {
+            PrimaryAuthorId = primaryAuthorId
+        };
+        for (var i = 1; i <= resolvedAuthors; i++)
+            catalog.Authors[$"OL{i}A"] = new($"OL{i}A", $"Writer {i}", []);
+
+        var response = await new BookSearchService(gemini, catalog, new StubBookSearchValidator(), NullLogger<BookSearchService>.Instance)
+            .SearchAsync("Example", default);
+
+        var match = Assert.Single(response.Matches);
+        Assert.Equal(expectedPrimaryAuthor, match.PrimaryAuthor);
+        Assert.Equal(expectedPrimaryAuthor, Assert.Single(gemini.SelectionRequests[0].Books).PrimaryAuthor);
+        Assert.Equal(resolvedAuthors > 0
+            ? Enumerable.Range(1, resolvedAuthors).Select(i => $"Writer {i}").ToArray()
+            : ["Listed writer"], match.Authors);
+    }
+
     [Fact]
     public async Task Groups_editions_under_one_work_and_returns_fetched_metadata_with_geminis_explanation()
     {
@@ -42,6 +73,7 @@ public class BookSearchServiceTests
         Assert.Equal("tolkien hobbit illustrated", gemini.SelectionRequests[0].Query);
         Assert.Equal("tolkien hobbit illustrated", Assert.Single(gemini.ExtractionQueries));
         var match = Assert.Single(response.Matches);
+        Assert.Null(match.PrimaryAuthor); // No work record was available, even though a search author was listed.
         Assert.Equal("The Hobbit", match.Title);
         Assert.Equal(1937, match.FirstPublishYear);
         Assert.Equal("https://openlibrary.org/works/OL1W", match.OpenLibraryUrl);

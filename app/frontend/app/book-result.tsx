@@ -16,7 +16,10 @@ export default function BookResult({ book, rank, showRank }: { book: BookMatch; 
       </div>
       <div className="book-details">
         <h3>{showRank && <span className="rank">{rank}.</span>}<a href={book.openLibraryUrl} target="_blank" rel="noopener noreferrer">{book.title}</a></h3>
-        <p className="book-author">{book.authors.length ? book.authors.join(", ") : "Author not listed"}</p>
+        {book.primaryAuthor && <p className="book-author">Primary author: {book.primaryAuthor}</p>}
+        {(!book.primaryAuthor || book.authors.length > 1) && (
+          <p className="book-author">{book.authors.length ? book.authors.join(", ") : "Author not listed"}</p>
+        )}
         {book.firstPublishYear !== null && <p className="book-year">First published {book.firstPublishYear}</p>}
         <p className="match-explanation">{book.explanation}</p>
         <a className="catalog-link" href={book.openLibraryUrl} target="_blank" rel="noopener noreferrer">Open Library <span aria-hidden="true">↗</span></a>

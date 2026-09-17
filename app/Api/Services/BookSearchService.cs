@@ -90,7 +90,7 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
             return new BookMatch(book.OpenLibraryWorkId, book.Title, authors,
                 book.FirstPublishYear, $"https://openlibrary.org/works/{book.OpenLibraryWorkId}",
                 book.CoverId is { } coverId ? $"https://covers.openlibrary.org/b/id/{coverId}-M.jpg?default=false" : null,
-                editions, selection.Explanation);
+                editions, selection.Explanation) { PrimaryAuthor = book.PrimaryAuthor };
         }).ToArray();
 
         return new SearchResponse(matches);
@@ -141,7 +141,14 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
                     }
                     if (author is not null) workAuthors.Add(author);
                 }
-                books[candidate.Index] = candidate.Book with { WorkAuthors = workAuthors.ToArray() };
+                books[candidate.Index] = candidate.Book with
+                {
+                    WorkAuthors = workAuthors.ToArray(),
+                    // A failed or skipped author lookup leaves primary authorship unconfirmed.
+                    PrimaryAuthor = workAuthors.Count == work.AuthorIds.Length
+                        ? workAuthors.FirstOrDefault(author => author.OpenLibraryAuthorId == work.PrimaryAuthorId)?.Name
+                        : null
+                };
             }
         }
         catch (CatalogException exception)

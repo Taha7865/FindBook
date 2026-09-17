@@ -11,7 +11,11 @@ public sealed record BookMatch(
     string OpenLibraryUrl,
     string? CoverUrl,
     BookEdition[] Editions,
-    string Explanation);
+    string Explanation)
+{
+    // Null means primary authorship was not established, not that the book has no author.
+    public string? PrimaryAuthor { get; init; }
+}
 
 public sealed record BookEdition(
     string EditionId,

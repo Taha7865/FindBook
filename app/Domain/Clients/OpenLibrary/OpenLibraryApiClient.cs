@@ -122,9 +122,21 @@ public sealed class OpenLibraryApiClient(IHttpClientFactory httpClientFactory, I
         if (ReadId(work.Key, "works", 'W') != workId)
             throw new CatalogException(CatalogFailure.BadResponse);
 
-        var authorIds = (work.Authors ?? []).Select(role => ReadId(role?.Author?.Key, "authors", 'A'))
+        var authorLinks = work.Authors ?? [];
+        var authorIds = authorLinks.Select(role => ReadId(role?.Author?.Key, "authors", 'A'))
             .OfType<string>().Distinct().ToArray();
-        return new CatalogWork(workId, authorIds);
+        var primaryAuthorLinks = authorLinks.Where(link =>
+            string.Equals(link?.Role?.Trim(), "primary author", StringComparison.OrdinalIgnoreCase)).ToArray();
+        string? primaryAuthorId = null;
+        // Missing or invalid links must not turn a partly known author list into a sole-author claim.
+        if (authorIds.Length == authorLinks.Length)
+        {
+            if (authorIds.Length == 1)
+                primaryAuthorId = authorIds[0];
+            else if (primaryAuthorLinks.Length == 1)
+                primaryAuthorId = ReadId(primaryAuthorLinks[0]?.Author?.Key, "authors", 'A');
+        }
+        return new CatalogWork(workId, authorIds) { PrimaryAuthorId = primaryAuthorId };
     }
 
     // Resolve an author ID to its catalog name and aliases, so the service can compare actual names.
