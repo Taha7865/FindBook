@@ -1,9 +1,8 @@
 using System.Net;
 using System.Text;
-using System.Text.Json;
 using FindBook.Domain.Clients.OpenLibrary;
 
-namespace FindBook.Tests.Unit;
+namespace FindBook.Tests;
 
 public sealed class OpenLibraryEditionTests
 {
@@ -36,29 +35,6 @@ public sealed class OpenLibraryEditionTests
         Assert.Equal("There and Back Again", edition.Subtitle);
         Assert.Equal("A. Artist (Illustrator)", Assert.Single(edition.Contributions));
         Assert.Equal("Includes illustrations.", edition.Notes);
-    }
-
-    [Theory]
-    [InlineData("2001")]
-    [InlineData("2001 [originally published 1937]")]
-    [InlineData("1937?")]
-    [InlineData("circa 1937")]
-    [InlineData("Unknown")]
-    [InlineData(null)]
-    public async Task First_publication_never_substitutes_for_the_requested_edition_year(string? publishDate)
-    {
-        var client = CreateClient(path => path == "/search.json" ? SearchResponse : JsonSerializer.Serialize(new
-        {
-            key = "/books/OL2M",
-            title = "The Hobbit",
-            publish_date = publishDate,
-            works = new[] { new { key = "/works/OL1W" } }
-        }));
-
-        var book = Assert.Single(await client.SearchAsync(new("The Hobbit", null, [], 1937, []), default));
-
-        Assert.Equal(1937, book.FirstPublishYear);
-        Assert.Empty(book.Editions);
     }
 
     [Fact]

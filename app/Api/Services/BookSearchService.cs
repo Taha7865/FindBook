@@ -8,7 +8,8 @@ using FindBook.Domain.Exceptions;
 
 namespace FindBook.Api.Services;
 
-public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiClient openLibrary, IBookSearchValidator validator)
+public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiClient openLibrary, IBookSearchValidator validator,
+    ILogger<BookSearchService> logger)
 {
     public async Task<SearchResponse> SearchAsync(string query, CancellationToken cancellationToken)
     {
@@ -44,6 +45,8 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
             authorsById, cancellationToken);
         var selectedBooks = await gemini.SelectBooksAsync(userQuery, booksFromOpenLibrary, cancellationToken);
         validator.ValidateSelection(selectedBooks, booksFromOpenLibrary);
+        logger.LogInformation("Gemini selected {ResultCount} books from {CandidateCount} candidates",
+            selectedBooks.Books.Length, booksFromOpenLibrary.Length);
 
         if (selectedBooks.Books.Length == 0 && !usedAuthorFallback
             && searchTerms.Title is not null && searchTerms.Author is not null)
@@ -59,6 +62,8 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
                 authorsById, cancellationToken);
             selectedBooks = await gemini.SelectBooksAsync(userQuery, booksFromOpenLibrary, cancellationToken);
             validator.ValidateSelection(selectedBooks, booksFromOpenLibrary);
+            logger.LogInformation("Gemini selected {ResultCount} books from {CandidateCount} candidates",
+                selectedBooks.Books.Length, booksFromOpenLibrary.Length);
         }
 
         selectedBooks = PrioritizeAcceptedBooks(userQuery, selectionSearchTerms, selectedBooks, booksFromOpenLibrary);
@@ -139,8 +144,10 @@ public sealed class BookSearchService(IGeminiApiClient gemini, IOpenLibraryApiCl
                 books[candidate.Index] = candidate.Book with { WorkAuthors = workAuthors.ToArray() };
             }
         }
-        catch (CatalogException)
+        catch (CatalogException exception)
         {
+            logger.LogWarning("Author verification failed; using available book details. FailureCategory {FailureCategory}",
+                exception.Failure);
             // Search results are still usable if optional author verification fails. Do not guess missing roles.
             // Stop further detail requests for this round; caller cancellation is not caught here.
         }

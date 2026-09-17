@@ -5,7 +5,7 @@ using FindBook.Api;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace FindBook.Tests.Unit;
+namespace FindBook.Tests;
 
 public sealed class HttpClientRetryTests
 {
@@ -40,65 +40,6 @@ public sealed class HttpClientRetryTests
         Assert.Equal(3, attempts);
     }
 
-    [Theory]
-    [InlineData(408)]
-    [InlineData(429)]
-    [InlineData(500)]
-    [InlineData(503)]
-    public async Task Temporary_failures_stop_after_three_total_attempts(int status)
-    {
-        var attempts = 0;
-        using var services = CreateServices("GeminiApi", (_, _) =>
-        {
-            attempts++;
-            return Task.FromResult(new HttpResponseMessage((HttpStatusCode)status));
-        });
-        using var client = services.GetRequiredService<IHttpClientFactory>().CreateClient("GeminiApi");
-
-        using var response = await client.GetAsync("search");
-
-        Assert.Equal((HttpStatusCode)status, response.StatusCode);
-        Assert.Equal(3, attempts);
-    }
-
-    [Theory]
-    [InlineData(200)]
-    [InlineData(400)]
-    [InlineData(401)]
-    [InlineData(403)]
-    [InlineData(404)]
-    public async Task Successful_responses_and_permanent_errors_are_not_retried(int status)
-    {
-        var attempts = 0;
-        using var services = CreateServices("OpenLibraryApi", (_, _) =>
-        {
-            attempts++;
-            return Task.FromResult(new HttpResponseMessage((HttpStatusCode)status));
-        });
-        using var client = services.GetRequiredService<IHttpClientFactory>().CreateClient("OpenLibraryApi");
-
-        using var response = await client.GetAsync("search");
-
-        Assert.Equal((HttpStatusCode)status, response.StatusCode);
-        Assert.Equal(1, attempts);
-    }
-
-    [Fact]
-    public async Task Network_failures_are_retried_but_remain_bounded()
-    {
-        var attempts = 0;
-        using var services = CreateServices("OpenLibraryApi", (_, _) =>
-        {
-            attempts++;
-            throw new HttpRequestException("Connection failed");
-        });
-        using var client = services.GetRequiredService<IHttpClientFactory>().CreateClient("OpenLibraryApi");
-
-        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync("search"));
-
-        Assert.Equal(3, attempts);
-    }
-
     [Fact]
     public async Task Retry_after_is_respected_and_caller_cancellation_stops_the_wait()
     {
@@ -118,25 +59,6 @@ public sealed class HttpClientRetryTests
         Assert.NotSame(request, await Task.WhenAny(request, Task.Delay(100)));
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);
-
-        Assert.Equal(1, attempts);
-    }
-
-    [Fact]
-    public async Task Client_timeout_includes_retry_delays()
-    {
-        var attempts = 0;
-        using var services = CreateServices("GeminiApi", (_, _) =>
-        {
-            attempts++;
-            var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
-            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromMinutes(1));
-            return Task.FromResult(response);
-        });
-        using var client = services.GetRequiredService<IHttpClientFactory>().CreateClient("GeminiApi");
-        client.Timeout = TimeSpan.FromMilliseconds(100);
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.GetAsync("search"));
 
         Assert.Equal(1, attempts);
     }

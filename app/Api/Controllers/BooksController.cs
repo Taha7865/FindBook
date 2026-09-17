@@ -7,7 +7,7 @@ namespace FindBook.Api.Controllers;
 
 [ApiController]
 [Route("api/books")]
-public sealed class BooksController(BookSearchService searchService) : ControllerBase
+public sealed class BooksController(BookSearchService searchService, ILogger<BooksController> logger) : ControllerBase
 {
     [HttpPost("search")]
     [Consumes("application/json")]
@@ -33,6 +33,8 @@ public sealed class BooksController(BookSearchService searchService) : Controlle
                 _ => (502, "The book catalog returned an unexpected response.")
             };
 
+            logger.LogError("Search request failed; Provider {Provider}; FailureCategory {FailureCategory}; StatusCode {StatusCode}",
+                "OpenLibrary", exception.Failure, status);
             return Problem(statusCode: status, title: title);
         }
         catch (GeminiApiException exception)
@@ -45,6 +47,8 @@ public sealed class BooksController(BookSearchService searchService) : Controlle
                 _ => (502, "The AI search service returned an unexpected response.")
             };
 
+            logger.LogError("Search request failed; Provider {Provider}; FailureCategory {FailureCategory}; StatusCode {StatusCode}",
+                "Gemini", exception.Reason, status);
             return Problem(statusCode: status, title: title);
         }
     }
